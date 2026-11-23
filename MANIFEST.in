@@ -1,0 +1,5 @@
+recursive-include hded_backup_manager *.json *.js *.py *.css *.svg
+recursive-include scripts *.py *.sh
+include README.md
+include LICENSE
+include scripts/hded-backup-control

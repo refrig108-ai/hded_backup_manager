@@ -1,0 +1,12 @@
+{
+  "doctype": "Page",
+  "name": "backup-manager",
+  "page_name": "backup-manager",
+  "title": "مدير النسخ الاحتياطي",
+  "module": "HDED Backup Manager",
+  "standard": "Yes",
+  "system_page": 0,
+  "roles": [
+    {"role": "System Manager"}
+  ]
+}

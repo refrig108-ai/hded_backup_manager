@@ -1,0 +1,319 @@
+/* HDED Backup Manager — unified interface system, version 0.2.2 */
+.hded-backup-manager {
+    --hb-blue: #1769aa;
+    --hb-blue-soft: #edf6ff;
+    --hb-gold: #936200;
+    --hb-gold-soft: #fff7df;
+    --hb-purple: #7040a5;
+    --hb-purple-soft: #f5efff;
+    --hb-teal: #087e73;
+    --hb-teal-soft: #e9faf7;
+    --hb-red: #b3261e;
+    --hb-red-soft: #fcebea;
+    --hb-green: #167345;
+    --hb-green-soft: #e7f7ed;
+    color: var(--text-color, #25313c);
+    padding-bottom: 28px;
+}
+
+/* Main section navigation */
+.hded-backup-manager .backup-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 10px;
+    margin: 10px 0 20px;
+    padding: 0 0 14px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+.hded-backup-manager .backup-tab-button {
+    --tab-color: var(--hb-blue);
+    --tab-bg: var(--hb-blue-soft);
+    --tab-border: #bfdcf5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 11px;
+    min-height: 50px;
+    min-width: 158px;
+    padding: 11px 18px;
+    border: 1px solid var(--tab-border);
+    border-radius: 10px;
+    background: var(--tab-bg);
+    color: var(--tab-color);
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.3;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(20, 35, 50, .04);
+    transition: background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.hded-backup-manager .backup-tab-button:hover {
+    border-color: var(--tab-color);
+    box-shadow: 0 3px 10px rgba(20, 35, 50, .09);
+    transform: translateY(-1px);
+}
+.hded-backup-manager .backup-tab-button:focus-visible,
+.hded-backup-manager .provider-action:focus-visible,
+.hded-backup-manager .backup-table .btn:focus-visible {
+    outline: 3px solid rgba(23, 105, 170, .28);
+    outline-offset: 2px;
+}
+.hded-backup-manager .backup-tab-button.active {
+    color: #fff;
+    background: var(--tab-color);
+    border-color: var(--tab-color);
+    box-shadow: 0 3px 10px rgba(20, 35, 50, .13);
+}
+.hded-backup-manager .tab-dashboard { --tab-color: var(--hb-blue); --tab-bg: var(--hb-blue-soft); --tab-border: #bfdcf5; }
+.hded-backup-manager .tab-settings { --tab-color: var(--hb-gold); --tab-bg: var(--hb-gold-soft); --tab-border: #f0d58a; }
+.hded-backup-manager .tab-apps { --tab-color: var(--hb-purple); --tab-bg: var(--hb-purple-soft); --tab-border: #d7c3f2; }
+.hded-backup-manager .tab-external { --tab-color: var(--hb-teal); --tab-bg: var(--hb-teal-soft); --tab-border: #a9e2d8; }
+
+/* SVG icon scale is semantic, not one size for every use. */
+.hded-backup-manager .backup-icon-svg {
+    display: block;
+    flex: 0 0 auto;
+    overflow: visible;
+}
+.hded-backup-manager .backup-icon-svg--nav { width: 23px; height: 23px; }
+.hded-backup-manager .backup-icon-svg--button { width: 18px; height: 18px; }
+.hded-backup-manager .backup-icon-svg--provider { width: 30px; height: 30px; }
+.hded-backup-manager .backup-icon-svg--small { width: 15px; height: 15px; }
+.hded-backup-manager .backup-tab-button .backup-icon-svg { opacity: .96; }
+
+/* Panels, KPI cards and status */
+.hded-backup-manager .backup-tab-panel { display: none; }
+.hded-backup-manager .backup-tab-panel.active:not([hidden]) { display: block; }
+.hded-backup-manager .backup-tab-panel[hidden] { display: none !important; }
+.hded-backup-manager .backup-cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 12px 0 20px;
+}
+.hded-backup-manager .backup-card,
+.hded-backup-manager .backup-panel {
+    min-width: 0;
+    padding: 17px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 11px;
+}
+.hded-backup-manager .backup-card .muted,
+.hded-backup-manager .muted {
+    color: var(--text-muted, #73808c);
+    font-size: 12px;
+    line-height: 1.7;
+}
+.hded-backup-manager .backup-card .number { margin-top: 7px; font-size: 27px; font-weight: 750; line-height: 1.2; }
+.hded-backup-manager .backup-card .latest { margin-top: 9px; font-size: 15px; font-weight: 650; line-height: 1.5; }
+.hded-backup-manager .backup-panel { margin-bottom: 16px; }
+.hded-backup-manager .panel-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+.hded-backup-manager .panel-heading h3 { margin: 0; font-size: 16px; font-weight: 750; line-height: 1.5; }
+.hded-backup-manager .switch-label { display: inline-flex; align-items: center; gap: 8px; margin: 0; line-height: 1.6; }
+.hded-backup-manager .state-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 25px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+.hded-backup-manager .state-pill.is-on { background: var(--bg-green, #e7f7ed); color: var(--text-green, #167345); }
+.hded-backup-manager .state-pill.is-off { background: var(--bg-red, #fcebea); color: var(--text-red, #b3261e); }
+.hded-backup-manager .backup-alert { margin-bottom: 14px; }
+.hded-backup-manager .backup-note { color: var(--text-muted, #73808c); font-size: 12px; line-height: 1.8; }
+
+/* Backup table and compact action buttons */
+.hded-backup-manager .backup-table { width: 100%; margin: 0; }
+.hded-backup-manager .backup-table th,
+.hded-backup-manager .backup-table td { vertical-align: middle; text-align: right; }
+.hded-backup-manager .backup-table td .btn { margin: 3px; }
+.hded-backup-manager .backup-table .btn,
+.hded-backup-manager .retention-actions .btn,
+.hded-backup-manager .settings-actions .btn,
+.hded-backup-manager .provider-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.hded-backup-manager .backup-table .btn { min-height: 34px; padding: 6px 10px; border-radius: 7px; font-size: 12px; }
+.hded-backup-manager .backup-table .download-database { color: #fff; background: var(--hb-blue); border-color: var(--hb-blue); }
+.hded-backup-manager .backup-table .download-public { color: #fff; background: var(--hb-teal); border-color: var(--hb-teal); }
+.hded-backup-manager .backup-table .download-private { color: #fff; background: var(--hb-purple); border-color: var(--hb-purple); }
+.hded-backup-manager .backup-table .download-apps { color: #fff; background: var(--hb-gold); border-color: var(--hb-gold); }
+.hded-backup-manager .backup-table .verify-backup { color: #155d37; background: var(--hb-green-soft); border-color: #b7e3c7; }
+
+/* Schedule and retention controls */
+.hded-backup-manager .schedule-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 13px; }
+.hded-backup-manager .schedule-option {
+    display: grid;
+    gap: 9px;
+    padding: 15px;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 9px;
+    background: var(--control-bg, #fff);
+}
+.hded-backup-manager .schedule-option > label:not(.switch-label) { margin: 0; color: var(--text-muted, #73808c); font-size: 12px; }
+.hded-backup-manager .retention-grid { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 13px; margin-top: 14px; }
+.hded-backup-manager .retention-grid label { color: var(--text-muted, #73808c); font-size: 12px; }
+.hded-backup-manager .retention-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 15px; }
+.hded-backup-manager .retention-actions .btn,
+.hded-backup-manager .settings-actions .btn { min-height: 40px; padding: 9px 14px; border-radius: 8px; font-weight: 650; }
+.hded-backup-manager .retention-actions .btn-warning { color: #6f4b00; background: #fff3cd; border-color: #f0d98b; }
+.hded-backup-manager .retention-preview { margin-top: 14px; padding: 13px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 9px; max-height: 280px; overflow: auto; }
+.hded-backup-manager .retention-result-summary { margin-bottom: 10px; font-weight: 650; }
+.hded-backup-manager .settings-actions { display: flex; justify-content: flex-start; margin: 15px 0 24px; }
+
+/* Application selection */
+.hded-backup-manager .apps-list { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 9px; margin-top: 10px; }
+.hded-backup-manager .app-choice { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; padding: 11px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 9px; }
+.hded-backup-manager .app-choice .app-name { flex: 1; min-width: 0; font-weight: 650; overflow-wrap: anywhere; }
+.hded-backup-manager .app-list-heading { margin-top: 22px; }
+.hded-backup-manager .app-auto-label { margin: 9px 0; }
+
+/* Cloud and mail provider cards */
+.hded-backup-manager .provider-grid { display: grid; grid-template-columns: repeat(2, minmax(240px, 1fr)); gap: 15px; margin-top: 15px; }
+.hded-backup-manager .mail-provider-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)); }
+.hded-backup-manager .provider-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 13px;
+    min-width: 0;
+    min-height: 220px;
+    padding: 17px;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 12px;
+    background: var(--card-bg, #fff);
+    box-shadow: 0 1px 2px rgba(20, 35, 50, .035);
+}
+.hded-backup-manager .provider-title { display: flex; align-items: center; gap: 13px; min-height: 58px; }
+.hded-backup-manager .provider-title > div { min-width: 0; }
+.hded-backup-manager .provider-title h4 { margin: 0 0 5px; font-size: 15px; font-weight: 750; line-height: 1.45; }
+.hded-backup-manager .provider-title p { margin: 0; color: var(--text-muted, #73808c); font-size: 12px; line-height: 1.65; }
+.hded-backup-manager .provider-mark {
+    display: inline-flex;
+    flex: 0 0 54px;
+    align-items: center;
+    justify-content: center;
+    width: 54px;
+    height: 54px;
+    border: 1px solid rgba(30, 45, 60, .07);
+    border-radius: 14px;
+    background: #f7f9fb;
+}
+.hded-backup-manager .provider-logo { display: block; width: 32px; height: 32px; }
+.hded-backup-manager .provider-logo-gmail { width: 34px; height: 34px; }
+.hded-backup-manager .provider-wordmark { display: block; font-size: 17px; font-weight: 800; letter-spacing: -1px; }
+.hded-backup-manager .provider-wordmark-yahoo { color: #5f259f; }
+.hded-backup-manager .provider-wordmark-yahoo span { color: #5f259f; }
+.hded-backup-manager .provider-drive .provider-mark { background: #f1faf4; }
+.hded-backup-manager .provider-onedrive .provider-mark { background: #eef7ff; }
+.hded-backup-manager .provider-gmail .provider-mark { background: #fff4f2; }
+.hded-backup-manager .provider-outlook .provider-mark { background: #eef6ff; }
+.hded-backup-manager .provider-yahoo .provider-mark { background: #f7f0ff; }
+.hded-backup-manager .provider-meta { display: grid; gap: 5px; color: var(--text-muted, #73808c); font-size: 11px; line-height: 1.6; }
+.hded-backup-manager .provider-account-status { margin: 0; color: var(--text-muted, #73808c); font-size: 12px; line-height: 1.5; }
+.hded-backup-manager .provider-account-status.configured { color: var(--hb-green); font-weight: 700; }
+.hded-backup-manager .provider-account-status.not-configured { color: var(--text-muted, #73808c); }
+.hded-backup-manager .provider-action { width: 100%; min-height: 42px; margin-top: auto; padding: 9px 13px; border-radius: 8px; font-weight: 700; font-size: 13px; }
+.hded-backup-manager .provider-drive-button { color: #fff; background: var(--hb-teal); border-color: var(--hb-teal); }
+.hded-backup-manager .provider-onedrive-button,
+.hded-backup-manager .provider-outlook-button { color: #fff; background: var(--hb-blue); border-color: var(--hb-blue); }
+.hded-backup-manager .provider-gmail-button { color: #fff; background: #b3261e; border-color: #b3261e; }
+.hded-backup-manager .provider-yahoo-button { color: #fff; background: #632ca6; border-color: #632ca6; }
+.hded-backup-manager .provider-action:hover { filter: brightness(.95); color: #fff; }
+.hded-backup-manager .mail-setup-dialog ol,
+.hded-backup-manager .cloud-setup-dialog ol { padding-right: 22px; line-height: 1.9; }
+.hded-backup-manager .mail-setup-dialog li,
+.hded-backup-manager .cloud-setup-dialog li { margin-bottom: 7px; }
+.hded-backup-manager .mail-setup-dialog p { line-height: 1.8; }
+
+/* Responsive layout */
+@media (max-width: 1000px) {
+    .hded-backup-manager .backup-cards { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+    .hded-backup-manager .mail-provider-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+}
+@media (max-width: 760px) {
+    .hded-backup-manager .schedule-grid { grid-template-columns: 1fr; }
+    .hded-backup-manager .provider-grid,
+    .hded-backup-manager .mail-provider-grid { grid-template-columns: 1fr; }
+    .hded-backup-manager .backup-tab-button { flex: 1 1 calc(50% - 10px); min-width: 0; }
+}
+@media (max-width: 600px) {
+    .hded-backup-manager .backup-cards { grid-template-columns: 1fr 1fr; }
+    .hded-backup-manager .retention-grid,
+    .hded-backup-manager .apps-list { grid-template-columns: 1fr; }
+    .hded-backup-manager .panel-heading { align-items: flex-start; flex-direction: column; }
+    .hded-backup-manager .backup-tab-button { min-height: 46px; padding: 9px 11px; font-size: 13px; }
+    .hded-backup-manager .backup-icon-svg--nav { width: 21px; height: 21px; }
+}
+
+/* HDED UNIFIED ICON SIZES v1 */
+
+/* الأيقونات العامة داخل التطبيق */
+.hded-backup-manager .backup-icon-svg {
+    display: inline-block;
+    flex: 0 0 auto;
+    vertical-align: middle;
+}
+
+/* أيقونات القوائم */
+.hded-backup-manager .backup-icon-svg--nav {
+    width: 19px;
+    height: 19px;
+}
+
+/* أيقونات الأزرار والإجراءات */
+.hded-backup-manager .backup-icon-svg--button {
+    width: 15px;
+    height: 15px;
+}
+
+/* أيقونات الخدمات والشعارات */
+.hded-backup-manager .backup-icon-svg--provider {
+    width: 24px;
+    height: 24px;
+}
+
+/* الأيقونات الصغيرة داخل الجداول */
+.hded-backup-manager .backup-icon-svg--small {
+    width: 12px;
+    height: 12px;
+}
+
+/* توحيد مساحة شعارات الخدمات */
+.hded-backup-manager .provider-mark {
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+}
+
+/* شعارات Google وMicrosoft وGmail */
+.hded-backup-manager .provider-mark .provider-logo {
+    width: 24px;
+    height: 24px;
+    max-width: 24px;
+    max-height: 24px;
+}
+
+/* حجم كلمة Yahoo */
+.hded-backup-manager .provider-mark .provider-wordmark {
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: -0.5px;
+}
