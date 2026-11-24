@@ -536,6 +536,9 @@ def test_backup_path(path: str | None = None, require_mount: bool = False):
 @frappe.whitelist(methods=["POST"])
 def start_backup():
     _require_manager()
+    settings = _get_settings()
+    if settings.get("backup_mode") == "one_time" and settings.get("one_time_completed_at"):
+        frappe.throw(_("تم تنفيذ النسخة المحددة لمرة واحدة بالفعل. غيّر نمط النسخ إلى النسخ الدوري ثم احفظ، أو أعد اختيار نمط النسخة الواحدة لبدء عملية جديدة."))
     _run_control("start", timeout=20)
     return {"message": "تم إرسال طلب إنشاء النسخة الاحتياطية إلى خدمة النظام"}
 
@@ -593,11 +596,17 @@ def _validate_settings(raw: dict) -> dict:
     if not isinstance(raw, dict):
         frappe.throw(_("صيغة الإعدادات غير صحيحة"))
 
+    backup_mode = str(raw.get("backup_mode", current.get("backup_mode", "scheduled"))).strip()
+    if backup_mode not in {"scheduled", "one_time"}:
+        frappe.throw(_("نمط النسخ الاحتياطي غير صالح"))
+
     current_storage = current.get("storage", {})
     storage_raw = raw.get("storage") or current_storage or {}
     storage = _validate_storage_settings(storage_raw, current_storage)
 
     schedule_enabled = bool(raw.get("schedule_enabled", current.get("schedule_enabled", True)))
+    if backup_mode == "one_time":
+        schedule_enabled = False
     schedule_raw = raw.get("schedule") or {}
     schedule = {}
     for key in ("daily", "weekly", "monthly"):
@@ -623,6 +632,14 @@ def _validate_settings(raw: dict) -> dict:
 
     if schedule_enabled and not any(item["enabled"] for item in schedule.values()):
         frappe.throw(_("فعّل موعداً واحداً على الأقل أو أوقف الجدولة التلقائية"))
+
+    if backup_mode == "one_time" and current.get("backup_mode", "scheduled") == "one_time":
+        one_time_completed_at = current.get("one_time_completed_at")
+        one_time_timestamp = current.get("one_time_timestamp")
+    else:
+        one_time_completed_at = None
+        one_time_timestamp = None
+
 
     retention_raw = raw.get("retention") or {}
     retention = {"auto_apply": bool(retention_raw.get("auto_apply", False))}
@@ -658,6 +675,9 @@ def _validate_settings(raw: dict) -> dict:
 
     return {
         "version": 3,
+        "backup_mode": backup_mode,
+        "one_time_completed_at": one_time_completed_at,
+        "one_time_timestamp": one_time_timestamp,
         "schedule_enabled": schedule_enabled,
         "schedule": schedule,
         "retention": retention,
