@@ -137,11 +137,13 @@ def backup_directory_details(path: Path) -> dict[str, Any]:
     root_device = os.stat("/").st_dev
     path_device = os.stat(path).st_dev
     mount_target = _mount_target(path)
+    filesystem_type = _filesystem_type(path)
     return {
         "path": str(path),
         "free_bytes": shutil.disk_usage(path).free,
         "mount_target": mount_target,
-        "is_separate_mount": path_device != root_device and mount_target != "/",
+        "filesystem_type": filesystem_type,
+        "is_separate_mount": (path_device != root_device and mount_target != "/") or filesystem_type == "vboxsf",
     }
 
 
