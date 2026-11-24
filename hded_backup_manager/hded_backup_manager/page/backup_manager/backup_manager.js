@@ -80,6 +80,16 @@ class HDEDBBackupManager {
             </div>
 
             <div id="backup-panel-settings" class="backup-tab-panel" data-panel="settings" role="tabpanel" hidden>
+              <section class="backup-panel local-storage-panel">
+                <div class="panel-heading"><h3>مكان حفظ النسخ الاحتياطية</h3><span class="muted">التخزين المحلي</span></div>
+                <p class="muted">اكتب المسار الكامل لمجلد على خادم Ubuntu. اتركه فارغاً لاستخدام مجلد الموقع الافتراضي. يمكن اختيار مجلد على قرص داخلي أو قرص خارجي موصول بالخادم.</p>
+                <div class="local-storage-fields">
+                  <div><label for="backup-local-path">مسار مجلد النسخ</label><input type="text" id="backup-local-path" class="form-control" dir="ltr" placeholder="/mnt/backup/hded"></div>
+                  <label class="switch-label"><input type="checkbox" id="backup-require-mount"> اشترط أن يكون المجلد على قرص/وحدة تخزين منفصلة موصولة</label>
+                </div>
+                <div class="local-storage-actions"><button type="button" class="btn btn-default" id="backup-path-test">${this.icon("shield")} فحص المسار وإمكانية الكتابة</button><span id="backup-path-status" class="muted" aria-live="polite"></span></div>
+                <p class="muted">الفحص ينشئ المجلد عند الحاجة ويتأكد من صلاحيات الحماية والمساحة المتاحة. عند تغيير المسار لا تُنقل النسخ القديمة أو تُحذف؛ تبقى ظاهرة في قائمة النسخ كمجلد سابق.</p>
+              </section>
               <section class="backup-panel">
                 <div class="panel-heading"><h3>جدولة النسخ الاحتياطي</h3><label class="switch-label"><input type="checkbox" id="schedule-enabled"> تفعيل الجدولة</label></div>
                 <p class="muted">يمكن تشغيل أكثر من جدول في الوقت نفسه؛ ينفذ النظام النسخ في كل موعد محدد.</p>
@@ -169,12 +179,13 @@ class HDEDBBackupManager {
         this.showTab("dashboard");
 
         this.body.find("#save-settings, #save-settings-apps").on("click", () => this.saveSettings());
+        this.body.find("#backup-path-test").on("click", () => this.testBackupPath());
         this.body.find("#preview-retention").on("click", () => this.previewRetention());
         this.body.find("#apply-retention").on("click", () => this.applyRetention());
         this.body.find(".email-connect-button").on("click", (event) => this.openEmailConnection($(event.currentTarget).attr("data-email-provider")));
         this.body.find(".cloud-setup-button").on("click", (event) => this.openCloudSetup($(event.currentTarget).attr("data-cloud-provider")));
-        this.body.on("click", ".verify-backup", (event) => this.verify($(event.currentTarget).data("timestamp")));
-        this.body.on("click", ".download-backup", (event) => this.download($(event.currentTarget).data("filename")));
+        this.body.on("click", ".verify-backup", (event) => this.verify($(event.currentTarget).data("timestamp"), $(event.currentTarget).data("storage") || "active"));
+        this.body.on("click", ".download-backup", (event) => this.download($(event.currentTarget).data("filename"), $(event.currentTarget).data("storage") || "active"));
     }
 
     showTab(name) {
@@ -218,7 +229,9 @@ class HDEDBBackupManager {
         this.body.find("#backup-complete").text(summary.complete_count ?? 0);
         this.body.find("#backup-size").text(summary.total_size || "0 B");
         this.body.find("#backup-latest").text(summary.latest || "لا توجد نسخ بعد");
-        this.body.find("#backup-directory").text(`مجلد التخزين: ${summary.directory || "غير متاح"}`);
+        this.body.find("#backup-directory").text(`مجلد التخزين الحالي: ${summary.directory || "غير متاح"} — المساحة المتاحة: ${summary.free_space || "غير متاحة"}`);
+        this.body.find("#backup-local-path").val((settings.storage || {}).local_path || "");
+        this.body.find("#backup-require-mount").prop("checked", !!(settings.storage || {}).require_mount);
         this.body.find("#timer-state").text(status.timer_active ? "الجدولة مفعّلة" : "الجدولة متوقفة").toggleClass("is-on", !!status.timer_active).toggleClass("is-off", !status.timer_active);
         this.body.find("#schedule-info").text(`موعد التنفيذ القادم: ${status.next_run || "غير متاح"} — آخر نتيجة للخدمة: ${status.service_result || "غير متاح"}`);
 
@@ -243,9 +256,11 @@ class HDEDBBackupManager {
         const rows = (data.backups || []).map((item) => {
             const state = item.complete ? '<span class="state-pill is-on">مكتملة</span>' : '<span class="state-pill is-off">غير مكتملة</span>';
             const labels = { database: "قاعدة البيانات", public: "الملفات العامة", private: "الملفات الخاصة", apps: "مصادر التطبيقات" };
-            const links = Object.entries(item.files || {}).map(([kind, filename]) => `<button type="button" class="btn btn-xs download-backup download-${kind}" data-filename="${frappe.utils.escape_html(filename)}">${this.icon("download", "small")} ${labels[kind] || kind}</button>`).join(" ");
+            const storage = item.storage || "active";
+            const storageLabel = storage === "previous" ? '<div class="muted">المجلد السابق</div>' : '<div class="muted">المجلد المحدد حالياً</div>';
+            const links = Object.entries(item.files || {}).map(([kind, filename]) => `<button type="button" class="btn btn-xs download-backup download-${kind}" data-filename="${frappe.utils.escape_html(filename)}" data-storage="${storage}">${this.icon("download", "small")} ${labels[kind] || kind}</button>`).join(" ");
             const appState = item.apps_available ? '<span class="muted">أرشيف التطبيقات محفوظ</span>' : '<span class="muted">لا يوجد أرشيف تطبيقات</span>';
-            return `<tr><td>${frappe.utils.escape_html(item.created)}</td><td>${state} <span class="muted">(${item.file_count}/${item.file_total})</span><div>${appState}</div></td><td>${frappe.utils.escape_html(item.size_label)}</td><td>${links}</td><td><button type="button" class="btn btn-xs verify-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" ${item.complete ? "" : "disabled"}>${this.icon("shield", "small")} فحص السلامة</button></td></tr>`;
+            return `<tr><td>${frappe.utils.escape_html(item.created)}</td><td>${state} <span class="muted">(${item.file_count}/${item.file_total})</span><div>${appState}</div>${storageLabel}</td><td>${frappe.utils.escape_html(item.size_label)}</td><td>${links}</td><td><button type="button" class="btn btn-xs verify-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${item.complete ? "" : "disabled"}>${this.icon("shield", "small")} فحص السلامة</button></td></tr>`;
         }).join("");
         this.body.find("#backup-rows").html(rows || '<tr><td colspan="5" class="text-center muted">لا توجد نسخ احتياطية لهذا الموقع</td></tr>');
     }
@@ -338,9 +353,28 @@ class HDEDBBackupManager {
         dialog.show();
     }
 
+    async testBackupPath() {
+        const path = (this.body.find("#backup-local-path").val() || "").trim();
+        const require_mount = this.body.find("#backup-require-mount").is(":checked");
+        const status = this.body.find("#backup-path-status");
+        status.text("جارٍ فحص المسار...").removeClass("text-danger text-success");
+        try {
+            const result = await this.call("test_backup_path", { path, require_mount });
+            status.text(`✓ ${result.message} — المساحة المتاحة: ${result.free_space} — نقطة التركيب: ${result.mount_target}`).addClass("text-success");
+            this.showAlert("اجتاز مجلد التخزين الفحص ويمكن استخدامه للنسخ الاحتياطي.", "success");
+        } catch (error) {
+            status.text("فشل فحص المسار. راجع رسالة الخطأ.").addClass("text-danger");
+            this.showAlert("تعذر اعتماد مجلد التخزين. تحقق من المسار والقرص والصلاحيات.", "danger");
+        }
+    }
+
     collectSettings() {
         const selectedApps = this.body.find(".app-include:checked").map((_, el) => $(el).val()).get();
         return {
+            storage: {
+                local_path: (this.body.find("#backup-local-path").val() || "").trim(),
+                require_mount: this.body.find("#backup-require-mount").is(":checked"),
+            },
             schedule_enabled: this.body.find("#schedule-enabled").is(":checked"),
             schedule: {
                 daily: { enabled: this.body.find("#daily-enabled").is(":checked"), time: this.body.find("#daily-time").val() || "02:00" },
@@ -426,16 +460,16 @@ class HDEDBBackupManager {
         }, 5000);
     }
 
-    async verify(timestamp) {
+    async verify(timestamp, storage = "active") {
         this.showAlert("يتم فحص ملفات النسخة وأرشيف التطبيقات إن وجد...", "info");
         try {
-            const result = await this.call("verify_backup", { timestamp });
+            const result = await this.call("verify_backup", { timestamp, storage });
             const detail = (result.checks || []).map((check) => `${check.ok ? "✓" : "✗"} ${check.name}`).join(" — ");
             this.showAlert(`${result.message || "انتهى الفحص"}${detail ? " | " + detail : ""}`, result.ok ? "success" : "danger");
         } catch (error) { this.showAlert("تعذر فحص النسخة الاحتياطية.", "danger"); }
     }
 
-    download(filename) { window.location.href = `/api/method/hded_backup_manager.api.download_backup?filename=${encodeURIComponent(filename)}`; }
+    download(filename, storage = "active") { window.location.href = `/api/method/hded_backup_manager.api.download_backup?filename=${encodeURIComponent(filename)}&storage=${encodeURIComponent(storage)}`; }
     showAlert(message, type) { this.body.find("#backup-alert").removeClass("alert-info alert-success alert-danger").addClass(`alert alert-${type}`).text(message).show(); }
     hideAlert() { this.body.find("#backup-alert").hide(); }
 }
