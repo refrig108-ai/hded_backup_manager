@@ -348,3 +348,151 @@
         flex-direction: column;
     }
 }
+
+
+/* Local storage folder picker and backup-mode controls */
+.hded-backup-manager .backup-path-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+.hded-backup-manager .backup-path-row input {
+    flex: 1 1 auto;
+    min-width: 180px;
+}
+.hded-backup-manager .backup-path-row button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+.hded-backup-manager .backup-mode-panel select {
+    max-width: 520px;
+    margin-top: 6px;
+}
+.hded-backup-manager .backup-schedule-disabled {
+    opacity: .55;
+}
+.storage-browser-intro {
+    margin: 0 0 14px;
+    color: var(--text-muted, #68737d);
+    line-height: 1.7;
+}
+.storage-volume-list,
+.storage-folder-list {
+    display: grid;
+    gap: 8px;
+    max-height: 48vh;
+    overflow: auto;
+    padding: 2px;
+}
+.storage-volume-open,
+.storage-folder-open {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color, #d8dee4);
+    border-radius: 9px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #25313c);
+    text-align: right;
+}
+.storage-volume-open:hover,
+.storage-folder-open:hover {
+    border-color: var(--primary, #1769aa);
+    background: var(--subtle-accent, #f4f8fc);
+}
+.storage-volume-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    border-radius: 9px;
+    background: var(--bg-light-gray, #f1f4f7);
+}
+.storage-volume-info {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+.storage-volume-info small,
+.storage-volume-info code {
+    overflow-wrap: anywhere;
+    color: var(--text-muted, #68737d);
+}
+.storage-volume-info code,
+.storage-browser-current code {
+    direction: ltr;
+    text-align: left;
+    white-space: normal;
+}
+.storage-volume-arrow,
+.storage-folder-open-label {
+    flex: 0 0 auto;
+    color: var(--primary, #1769aa);
+    font-size: 12px;
+    font-weight: 600;
+}
+.storage-browser-loading {
+    padding: 18px;
+    text-align: center;
+    color: var(--text-muted, #68737d);
+}
+.storage-browser-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.storage-browser-kind {
+    margin-inline-start: auto;
+    color: var(--text-muted, #68737d);
+    font-size: 12px;
+}
+.storage-browser-current {
+    display: grid;
+    gap: 5px;
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: 9px;
+    background: var(--bg-light-gray, #f4f6f8);
+}
+.storage-browser-current small {
+    color: var(--text-muted, #68737d);
+}
+.storage-folder-open {
+    justify-content: flex-start;
+    text-align: right;
+}
+.storage-folder-open span:nth-child(2) {
+    flex: 1 1 auto;
+    overflow-wrap: anywhere;
+}
+.storage-browser-select {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color, #d8dee4);
+}
+@media (max-width: 700px) {
+    .hded-backup-manager .backup-path-row {
+        flex-direction: column;
+    }
+    .hded-backup-manager .backup-path-row button {
+        width: 100%;
+    }
+    .storage-volume-open {
+        align-items: flex-start;
+    }
+    .storage-volume-arrow {
+        display: none;
+    }
+}
