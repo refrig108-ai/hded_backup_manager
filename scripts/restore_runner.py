@@ -36,6 +36,48 @@ def run(command: list[str], timeout: int = 3600) -> None:
     subprocess.run(command, cwd=BENCH_DIR, check=True, timeout=timeout)
 
 
+def restore_database_dump(site: str, dump_file: Path) -> None:
+    """Replace all site tables/views before importing a full SQL dump."""
+    import frappe
+
+    frappe.init(site=site, sites_path=str(BENCH_DIR / "sites"))
+    try:
+        frappe.connect()
+        rows = frappe.db.sql("SHOW FULL TABLES")
+        objects = []
+        for row in rows:
+            if len(row) < 2:
+                continue
+            name = str(row[0]).replace("`", "``")
+            kind = str(row[1]).upper()
+            objects.append((name, kind))
+
+        # Drop views first because they can depend on base tables.
+        for name, kind in objects:
+            if "VIEW" in kind:
+                frappe.db.sql(f"DROP VIEW IF EXISTS `{name}`")
+
+        frappe.db.sql("SET FOREIGN_KEY_CHECKS=0")
+        try:
+            for name, kind in objects:
+                if "VIEW" not in kind:
+                    frappe.db.sql(f"DROP TABLE IF EXISTS `{name}`")
+        finally:
+            frappe.db.sql("SET FOREIGN_KEY_CHECKS=1")
+
+        from frappe.database.db_manager import DbManager
+
+        DbManager.restore_database(
+            verbose=True,
+            target=frappe.conf.db_name,
+            source=str(dump_file),
+            user=frappe.conf.db_user,
+            password=frappe.conf.db_password,
+        )
+    finally:
+        frappe.destroy()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Safely restore an HDED database-only backup")
     parser.add_argument("--site", required=True)
@@ -120,21 +162,8 @@ def main() -> int:
             safety_backup=str(safety_file),
         )
 
-        import frappe
-        frappe.init(site=site, sites_path=str(BENCH_DIR / "sites"))
-        frappe.connect()
-        try:
-            from frappe.database.db_manager import DbManager
-            DbManager.restore_database(
-                verbose=True,
-                target=frappe.conf.db_name,
-                source=str(backup_file),
-                user=frappe.conf.db_user,
-                password=frappe.conf.db_password,
-            )
-            restored = True
-        finally:
-            frappe.destroy()
+        restore_database_dump(site, backup_file)
+        restored = True
 
         run([str(bench), "--site", site, "clear-cache"], timeout=180)
         run([str(bench), "--site", site, "clear-website-cache"], timeout=180)
@@ -153,20 +182,7 @@ def main() -> int:
         if safety_file and safety_file.is_file():
             try:
                 write_status(status_file, "running", "فشلت الاستعادة الأساسية. جارٍ إرجاع قاعدة البيانات من نسخة الأمان.")
-                import frappe
-                frappe.init(site=site, sites_path=str(BENCH_DIR / "sites"))
-                frappe.connect()
-                try:
-                    from frappe.database.db_manager import DbManager
-                    DbManager.restore_database(
-                        verbose=True,
-                        target=frappe.conf.db_name,
-                        source=str(safety_file),
-                        user=frappe.conf.db_user,
-                        password=frappe.conf.db_password,
-                    )
-                finally:
-                    frappe.destroy()
+                restore_database_dump(site, safety_file)
                 run([str(bench), "--site", site, "clear-cache"], timeout=180)
                 if maintenance_enabled:
                     run([str(bench), "--site", site, "set-maintenance-mode", "off"], timeout=120)
