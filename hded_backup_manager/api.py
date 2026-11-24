@@ -21,6 +21,8 @@ from hded_backup_manager.backup_engine import (
     list_backup_sets,
     read_settings,
     retention_plan,
+    prepare_backup_directory,
+    backup_directory_details,
 )
 
 CONTROL_BIN = "/usr/local/sbin/hded-backup-control"
@@ -46,21 +48,35 @@ def _bench_dir() -> Path:
     return Path(frappe.get_app_path("frappe")).resolve().parents[2]
 
 
-def _backup_dir() -> Path:
-    raw_path = Path(frappe.get_site_path("private", "backups"))
-    if raw_path.is_symlink():
-        frappe.throw(_("مسار النسخ الاحتياطي غير صالح"))
+def _backup_dir(settings: dict | None = None) -> Path:
+    settings = settings if settings is not None else _get_settings()
+    storage = settings.get("storage", {})
     try:
-        raw_path.mkdir(parents=True, mode=0o700, exist_ok=True)
-        if raw_path.is_symlink() or not raw_path.is_dir():
-            frappe.throw(_("مسار النسخ الاحتياطي غير صالح"))
-        private_root = Path(frappe.get_site_path("private")).resolve(strict=True)
-        path = raw_path.resolve(strict=True)
-        if path.parent != private_root:
-            frappe.throw(_("مسار النسخ الاحتياطي خارج مجلد الموقع"))
-        return path
-    except OSError:
-        frappe.throw(_("تعذر الوصول إلى مجلد النسخ الاحتياطي"))
+        return prepare_backup_directory(
+            site_path=Path(frappe.get_site_path()),
+            bench_dir=_bench_dir(),
+            local_path=storage.get("local_path", ""),
+            require_mount=bool(storage.get("require_mount", False)),
+            create=True,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        frappe.throw(_("تعذر الوصول إلى مجلد النسخ الاحتياطي: {0}").format(str(exc)[:300]))
+
+
+def _backup_dirs(settings: dict | None = None) -> dict[str, Path]:
+    settings = settings if settings is not None else _get_settings()
+    active = _backup_dir(settings)
+    result = {"active": active}
+    legacy = Path(frappe.get_site_path("private", "backups"))
+    if legacy.exists() and not legacy.is_symlink():
+        try:
+            private_root = Path(frappe.get_site_path("private")).resolve(strict=True)
+            legacy = legacy.resolve(strict=True)
+            if legacy.is_dir() and legacy.parent == private_root and legacy != active:
+                result["previous"] = legacy
+        except OSError:
+            pass
+    return result
 
 
 def _settings_path() -> Path:
@@ -101,10 +117,13 @@ def _site_prefix() -> str:
     return frappe.local.site.replace(".", "_")
 
 
-def _expected_files(timestamp: str) -> dict[str, Path]:
+def _expected_files(timestamp: str, storage: str = "active") -> dict[str, Path]:
     if not TIMESTAMP_RE.fullmatch(timestamp or ""):
         frappe.throw(_("معرّف النسخة الاحتياطية غير صالح"))
-    folder = _backup_dir()
+    folders = _backup_dirs()
+    if storage not in folders:
+        frappe.throw(_("مجلد تخزين النسخة غير معروف أو لم يعد متاحاً"))
+    folder = folders[storage]
     prefix = f"{timestamp}-{_site_prefix()}"
     return {kind: folder / f"{prefix}-{suffix}" for kind, suffix in BACKUP_SUFFIXES.items()}
 
@@ -204,8 +223,7 @@ def _email_connections_for_ui() -> dict[str, dict | None]:
     return result
 
 
-def _dashboard_backups() -> list[dict]:
-    rows = list_backup_sets(_backup_dir(), _site_prefix())
+def _dashboard_backups(settings: dict | None = None) -> list[dict]:
     result = []
     suffix_map = {
         "database": "database.sql.gz",
@@ -213,34 +231,39 @@ def _dashboard_backups() -> list[dict]:
         "private": "private-files.tar",
         "apps": APP_ARCHIVE_SUFFIX,
     }
-    for row in rows:
-        timestamp = row["timestamp"]
-        files = {
-            key: f"{timestamp}-{_site_prefix()}-{suffix}"
-            for key, suffix in suffix_map.items()
-            if suffix in row["files"]
-        }
-        result.append({
-            "timestamp": timestamp,
-            "created": row["created"],
-            "complete": row["complete"],
-            "file_count": len(row["files"]),
-            "file_total": 5 if row["apps_available"] else 4,
-            "apps_available": row["apps_available"],
-            "total_size": row["total_size"],
-            "size_label": _format_size(row["total_size"]),
-            "files": files,
-        })
-    return result
+    for storage, directory in _backup_dirs(settings).items():
+        for row in list_backup_sets(directory, _site_prefix()):
+            timestamp = row["timestamp"]
+            files = {
+                key: f"{timestamp}-{_site_prefix()}-{suffix}"
+                for key, suffix in suffix_map.items()
+                if suffix in row["files"]
+            }
+            result.append({
+                "timestamp": timestamp,
+                "storage": storage,
+                "storage_label": "المجلد المحدد" if storage == "active" else "المجلد السابق",
+                "created": row["created"],
+                "complete": row["complete"],
+                "file_count": len(row["files"]),
+                "file_total": 5 if row["apps_available"] else 4,
+                "apps_available": row["apps_available"],
+                "total_size": row["total_size"],
+                "size_label": _format_size(row["total_size"]),
+                "files": files,
+            })
+    return sorted(result, key=lambda item: (item["timestamp"], item["storage"] == "active"), reverse=True)
 
 
 @frappe.whitelist()
 def get_dashboard():
     _require_manager()
-    backups = _dashboard_backups()
-    status = _system_status()
     settings = _get_settings()
-    directory = _backup_dir()
+    directories = _backup_dirs(settings)
+    directory = directories["active"]
+    backups = _dashboard_backups(settings)
+    status = _system_status()
+    storage_info = backup_directory_details(directory)
     total_bytes = sum(item["total_size"] for item in backups)
     return {
         "status": status,
@@ -253,8 +276,40 @@ def get_dashboard():
             "total_size": _format_size(total_bytes),
             "latest": backups[0]["created"] if backups else "لا توجد نسخ بعد",
             "directory": str(directory),
+            "previous_directory": str(directories["previous"]) if "previous" in directories else None,
+            "free_space": _format_size(storage_info["free_bytes"]),
+            "mount_target": storage_info["mount_target"],
+            "is_separate_mount": storage_info["is_separate_mount"],
         },
         "backups": backups[:100],
+    }
+
+
+@frappe.whitelist(methods=["POST"])
+def test_backup_path(path: str | None = None, require_mount: bool = False):
+    _require_manager()
+    raw_path = str(path or "").strip()
+    must_be_mounted = require_mount if isinstance(require_mount, bool) else str(require_mount).strip().lower() in {"1", "true", "yes", "on"}
+    if must_be_mounted and not raw_path:
+        frappe.throw(_("أدخل مسار القرص الخارجي أولاً"))
+    try:
+        checked = prepare_backup_directory(
+            site_path=Path(frappe.get_site_path()),
+            bench_dir=_bench_dir(),
+            local_path=raw_path,
+            require_mount=must_be_mounted,
+            create=True,
+        )
+        details = backup_directory_details(checked)
+    except (OSError, ValueError, RuntimeError) as exc:
+        frappe.throw(_("فشل فحص مجلد النسخ: {0}").format(str(exc)[:300]))
+    return {
+        "ok": True,
+        "path": str(checked),
+        "free_space": _format_size(details["free_bytes"]),
+        "mount_target": details["mount_target"],
+        "is_separate_mount": details["is_separate_mount"],
+        "message": "المجلد صالح والكتابة إليه ناجحة",
     }
 
 
@@ -269,6 +324,26 @@ def _validate_settings(raw: dict) -> dict:
     current = _get_settings()
     if not isinstance(raw, dict):
         frappe.throw(_("صيغة الإعدادات غير صحيحة"))
+
+    storage_raw = raw.get("storage") or current.get("storage") or {}
+    local_path = str(storage_raw.get("local_path") or "").strip()
+    require_mount_raw = storage_raw.get("require_mount", False)
+    require_mount = require_mount_raw if isinstance(require_mount_raw, bool) else str(require_mount_raw).strip().lower() in {"1", "true", "yes", "on"}
+    if require_mount and not local_path:
+        frappe.throw(_("لا يمكن اشتراط قرص منفصل مع ترك مسار التخزين الافتراضي"))
+    try:
+        checked_path = prepare_backup_directory(
+            site_path=Path(frappe.get_site_path()),
+            bench_dir=_bench_dir(),
+            local_path=local_path,
+            require_mount=require_mount,
+            create=True,
+        )
+        if local_path:
+            local_path = str(checked_path)
+    except (OSError, ValueError, RuntimeError) as exc:
+        frappe.throw(_("مسار تخزين النسخ غير صالح: {0}").format(str(exc)[:300]))
+    storage = {"local_path": local_path, "require_mount": require_mount}
 
     schedule_enabled = bool(raw.get("schedule_enabled", current.get("schedule_enabled", True)))
     schedule_raw = raw.get("schedule") or {}
@@ -330,10 +405,11 @@ def _validate_settings(raw: dict) -> dict:
     }
 
     return {
-        "version": 2,
+        "version": 3,
         "schedule_enabled": schedule_enabled,
         "schedule": schedule,
         "retention": retention,
+        "storage": storage,
         "apps": apps,
     }
 
@@ -377,8 +453,10 @@ def _settings_from_request(settings_json: str | None) -> dict:
 def preview_retention(settings_json: str | None = None):
     _require_manager()
     settings = _settings_from_request(settings_json)
-    plan = retention_plan(_backup_dir(), _site_prefix(), settings["retention"])
+    directory = _backup_dir(settings)
+    plan = retention_plan(directory, _site_prefix(), settings["retention"])
     return {
+        "directory": str(directory),
         "keep_count": len(plan["keep"]),
         "delete_count": len(plan["delete"]),
         "incomplete_preserved": plan["incomplete_preserved"],
@@ -413,9 +491,10 @@ def apply_retention_now(settings_json: str | None = None, expected_timestamps: s
 
 
 @frappe.whitelist()
-def verify_backup(timestamp: str):
+def verify_backup(timestamp: str, storage: str = "active"):
     _require_manager()
-    paths = _expected_files(timestamp)
+    paths = _expected_files(timestamp, storage)
+    backup_dir = _backup_dirs()[storage]
     core_kinds = ("database", "public", "private", "config")
     missing = [kind for kind in core_kinds if not paths[kind].is_file() or paths[kind].is_symlink()]
     if missing:
@@ -454,7 +533,7 @@ def verify_backup(timestamp: str):
         else:
             checks.append({"name": "أرشيف مصادر التطبيقات (غير موجود في النسخة القديمة)", "ok": False, "optional": True})
 
-        folder_mode = os.stat(_backup_dir()).st_mode & 0o777
+        folder_mode = os.stat(backup_dir).st_mode & 0o777
         safe_modes = all((os.stat(paths[kind]).st_mode & 0o077) == 0 for kind in core_kinds)
         if apps_path.is_file() and not apps_path.is_symlink():
             safe_modes = safe_modes and (os.stat(apps_path).st_mode & 0o077) == 0
@@ -471,7 +550,7 @@ def verify_backup(timestamp: str):
 
 
 @frappe.whitelist()
-def download_backup(filename: str):
+def download_backup(filename: str, storage: str = "active"):
     _require_manager()
     allowed_suffixes = (
         "-" + BACKUP_SUFFIXES["database"],
@@ -482,10 +561,11 @@ def download_backup(filename: str):
     if not isinstance(filename, str) or not any(filename.endswith(suffix) for suffix in allowed_suffixes):
         frappe.throw(_("هذا الملف غير متاح للتنزيل من المتصفح"))
     timestamp = filename.split("-", 1)[0]
-    paths = _expected_files(timestamp)
+    paths = _expected_files(timestamp, storage)
+    backup_dir = _backup_dirs()[storage]
     allowed_paths = {path.name: path for kind, path in paths.items() if kind != "config"}
     path = allowed_paths.get(filename)
-    if not path or path.is_symlink() or not path.is_file() or path.resolve().parent != _backup_dir():
+    if not path or path.is_symlink() or not path.is_file() or path.resolve().parent != backup_dir:
         frappe.throw(_("ملف النسخة الاحتياطية غير موجود أو غير صالح"))
     if path.stat().st_size > 256 * 1024 * 1024:
         frappe.throw(_("حجم الملف يتجاوز حد التنزيل المباشر من المتصفح (256 ميجابايت). استخدم وجهة التخزين الخارجية عند تفعيلها."))
