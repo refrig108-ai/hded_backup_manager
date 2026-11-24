@@ -878,8 +878,6 @@ def verify_backup(timestamp: str, storage: str = "active"):
                 pass
         checks.append({"name": "قاعدة البيانات المضغوطة", "ok": True})
 
-        checks.append({"name": "ملف قاعدة البيانات المضغوط", "ok": True})
-
         folder_mode = os.stat(backup_dir).st_mode & 0o777
         is_vboxsf = backup_directory_details(backup_dir).get("filesystem_type") == "vboxsf"
         forbidden_bits = 0o007 if is_vboxsf else 0o077
