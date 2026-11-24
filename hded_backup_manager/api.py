@@ -63,19 +63,54 @@ def _backup_dir(settings: dict | None = None) -> Path:
         frappe.throw(_("تعذر الوصول إلى مجلد النسخ الاحتياطي: {0}").format(str(exc)[:300]))
 
 
-def _backup_dirs(settings: dict | None = None) -> dict[str, Path]:
+def _backup_dirs(
+    settings: dict | None = None,
+    allow_unavailable_active: bool = False,
+) -> dict[str, Path | None]:
     settings = settings if settings is not None else _get_settings()
-    active = _backup_dir(settings)
-    result = {"active": active}
-    legacy = Path(frappe.get_site_path("private", "backups"))
-    if legacy.exists() and not legacy.is_symlink():
+    result: dict[str, Path | None] = {}
+    try:
+        result["active"] = _backup_dir(settings)
+    except Exception:
+        if not allow_unavailable_active:
+            raise
+        result["active"] = None
+
+    storage = settings.get("storage", {})
+    previous_paths = storage.get("previous_paths") or []
+    if not isinstance(previous_paths, list):
+        previous_paths = []
+    default_path = Path(frappe.get_site_path("private", "backups"))
+    if default_path.exists() and not default_path.is_symlink():
+        previous_paths = [*previous_paths, str(default_path)]
+
+    active_value = str(storage.get("local_path") or "").strip()
+    active_raw = Path(active_value).expanduser() if active_value else default_path
+    active_raw = Path(os.path.normpath(str(active_raw)))
+    seen: set[str] = set()
+    index = 0
+    for raw in previous_paths:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        candidate = Path(os.path.normpath(str(Path(raw).expanduser())))
+        if not candidate.is_absolute() or candidate == active_raw or not candidate.exists():
+            continue
+        if any(component.is_symlink() for component in (candidate, *candidate.parents)):
+            continue
         try:
-            private_root = Path(frappe.get_site_path("private")).resolve(strict=True)
-            legacy = legacy.resolve(strict=True)
-            if legacy.is_dir() and legacy.parent == private_root and legacy != active:
-                result["previous"] = legacy
+            resolved = candidate.resolve(strict=True)
+            if resolved != candidate or not resolved.is_dir():
+                continue
+            if resolved != default_path and (resolved in _bench_dir().parents or _bench_dir() in resolved.parents):
+                continue
         except OSError:
-            pass
+            continue
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        index += 1
+        result[f"previous_{index}"] = resolved
     return result
 
 
@@ -120,9 +155,9 @@ def _site_prefix() -> str:
 def _expected_files(timestamp: str, storage: str = "active") -> dict[str, Path]:
     if not TIMESTAMP_RE.fullmatch(timestamp or ""):
         frappe.throw(_("معرّف النسخة الاحتياطية غير صالح"))
-    folders = _backup_dirs()
-    if storage not in folders:
-        frappe.throw(_("مجلد تخزين النسخة غير معروف أو لم يعد متاحاً"))
+    folders = _backup_dirs(allow_unavailable_active=(storage != "active"))
+    if storage not in folders or folders[storage] is None:
+        frappe.throw(_("مجلد تخزين النسخة غير معروف أو غير متاح حالياً"))
     folder = folders[storage]
     prefix = f"{timestamp}-{_site_prefix()}"
     return {kind: folder / f"{prefix}-{suffix}" for kind, suffix in BACKUP_SUFFIXES.items()}
@@ -231,7 +266,9 @@ def _dashboard_backups(settings: dict | None = None) -> list[dict]:
         "private": "private-files.tar",
         "apps": APP_ARCHIVE_SUFFIX,
     }
-    for storage, directory in _backup_dirs(settings).items():
+    for storage, directory in _backup_dirs(settings, allow_unavailable_active=True).items():
+        if directory is None or not directory.is_dir():
+            continue
         for row in list_backup_sets(directory, _site_prefix()):
             timestamp = row["timestamp"]
             files = {
@@ -242,7 +279,7 @@ def _dashboard_backups(settings: dict | None = None) -> list[dict]:
             result.append({
                 "timestamp": timestamp,
                 "storage": storage,
-                "storage_label": "المجلد المحدد" if storage == "active" else "المجلد السابق",
+                "storage_label": "المجلد المحدد" if storage == "active" else "مجلد سابق",
                 "created": row["created"],
                 "complete": row["complete"],
                 "file_count": len(row["files"]),
@@ -259,11 +296,20 @@ def _dashboard_backups(settings: dict | None = None) -> list[dict]:
 def get_dashboard():
     _require_manager()
     settings = _get_settings()
-    directories = _backup_dirs(settings)
-    directory = directories["active"]
+    storage_error = None
+    try:
+        directories = _backup_dirs(settings)
+    except Exception as exc:
+        storage_error = str(exc)[:300]
+        directories = _backup_dirs(settings, allow_unavailable_active=True)
+    directory = directories.get("active")
+    configured_path = str(settings.get("storage", {}).get("local_path") or "").strip()
+    if directory is None:
+        directory = Path(configured_path).expanduser() if configured_path else Path(frappe.get_site_path("private", "backups"))
     backups = _dashboard_backups(settings)
     status = _system_status()
-    storage_info = backup_directory_details(directory)
+    storage_info = backup_directory_details(directory) if directories.get("active") is not None else None
+    previous_directories = [str(path) for key, path in directories.items() if key.startswith("previous_") and path is not None]
     total_bytes = sum(item["total_size"] for item in backups)
     return {
         "status": status,
@@ -276,10 +322,12 @@ def get_dashboard():
             "total_size": _format_size(total_bytes),
             "latest": backups[0]["created"] if backups else "لا توجد نسخ بعد",
             "directory": str(directory),
-            "previous_directory": str(directories["previous"]) if "previous" in directories else None,
-            "free_space": _format_size(storage_info["free_bytes"]),
-            "mount_target": storage_info["mount_target"],
-            "is_separate_mount": storage_info["is_separate_mount"],
+            "previous_directory": previous_directories[0] if previous_directories else None,
+            "previous_directories": previous_directories,
+            "storage_error": storage_error,
+            "free_space": _format_size(storage_info["free_bytes"]) if storage_info else "غير متاحة",
+            "mount_target": storage_info["mount_target"] if storage_info else None,
+            "is_separate_mount": storage_info["is_separate_mount"] if storage_info else False,
         },
         "backups": backups[:100],
     }
@@ -343,7 +391,28 @@ def _validate_settings(raw: dict) -> dict:
             local_path = str(checked_path)
     except (OSError, ValueError, RuntimeError) as exc:
         frappe.throw(_("مسار تخزين النسخ غير صالح: {0}").format(str(exc)[:300]))
-    storage = {"local_path": local_path, "require_mount": require_mount}
+    current_storage = current.get("storage", {})
+    history = current_storage.get("previous_paths") or []
+    if not isinstance(history, list):
+        history = []
+    old_raw = str(current_storage.get("local_path") or "").strip()
+    old_active = Path(old_raw).expanduser() if old_raw else Path(frappe.get_site_path("private", "backups"))
+    old_active = Path(os.path.normpath(str(old_active)))
+    if old_active != checked_path:
+        history = [str(old_active), *history]
+    new_path_string = str(checked_path)
+    previous_paths = []
+    for old_path in history:
+        if not isinstance(old_path, str) or not old_path.strip():
+            continue
+        normalized = str(Path(os.path.normpath(str(Path(old_path).expanduser()))))
+        if normalized != new_path_string and normalized not in previous_paths:
+            previous_paths.append(normalized)
+    storage = {
+        "local_path": local_path,
+        "require_mount": require_mount,
+        "previous_paths": previous_paths[:20],
+    }
 
     schedule_enabled = bool(raw.get("schedule_enabled", current.get("schedule_enabled", True)))
     schedule_raw = raw.get("schedule") or {}
@@ -472,7 +541,7 @@ def preview_retention(settings_json: str | None = None):
 def apply_retention_now(settings_json: str | None = None, expected_timestamps: str | None = None):
     _require_manager()
     settings = _settings_from_request(settings_json)
-    plan = retention_plan(_backup_dir(), _site_prefix(), settings["retention"])
+    plan = retention_plan(_backup_dir(settings), _site_prefix(), settings["retention"])
     if not plan["delete"]:
         return {"message": "لا توجد نسخ مكتملة زائدة للحذف", "deleted_count": 0}
     try:
@@ -482,7 +551,7 @@ def apply_retention_now(settings_json: str | None = None, expected_timestamps: s
     current = {row["timestamp"] for row in plan["delete"]}
     if expected != current:
         frappe.throw(_("تغيرت قائمة النسخ المرشحة للحذف منذ المعاينة. أعد المعاينة قبل الحذف."))
-    result = apply_retention(_backup_dir(), _site_prefix(), settings["retention"])
+    result = apply_retention(_backup_dir(settings), _site_prefix(), settings["retention"])
     return {
         "message": "اكتمل تطبيق سياسة الاحتفاظ. لم تُحذف النسخ غير المكتملة.",
         "deleted_count": result["deleted_count"],
@@ -494,7 +563,7 @@ def apply_retention_now(settings_json: str | None = None, expected_timestamps: s
 def verify_backup(timestamp: str, storage: str = "active"):
     _require_manager()
     paths = _expected_files(timestamp, storage)
-    backup_dir = _backup_dirs()[storage]
+    backup_dir = _backup_dirs(allow_unavailable_active=(storage != "active"))[storage]
     core_kinds = ("database", "public", "private", "config")
     missing = [kind for kind in core_kinds if not paths[kind].is_file() or paths[kind].is_symlink()]
     if missing:
@@ -562,7 +631,7 @@ def download_backup(filename: str, storage: str = "active"):
         frappe.throw(_("هذا الملف غير متاح للتنزيل من المتصفح"))
     timestamp = filename.split("-", 1)[0]
     paths = _expected_files(timestamp, storage)
-    backup_dir = _backup_dirs()[storage]
+    backup_dir = _backup_dirs(allow_unavailable_active=(storage != "active"))[storage]
     allowed_paths = {path.name: path for kind, path in paths.items() if kind != "config"}
     path = allowed_paths.get(filename)
     if not path or path.is_symlink() or not path.is_file() or path.resolve().parent != backup_dir:
