@@ -312,6 +312,9 @@ def _mounted_storage_locations() -> list[dict]:
                 if not isinstance(raw_target, str) or not raw_target.startswith("/"):
                     continue
                 target = Path(os.path.normpath(raw_target))
+                # A VirtualBox host share is expected below /media/sf_* or a
+                # user-selected mount point. It is deliberately exempt from
+                # the general /media and /mnt system-folder exclusions.
                 if target.is_symlink() or not target.is_dir():
                     continue
                 try:
@@ -341,7 +344,7 @@ def _mounted_storage_locations() -> list[dict]:
                     "size": "مجلد مشترك",
                     "filesystem": "vboxsf",
                     "free_bytes": free_bytes,
-                    "is_separate_mount": stat_result.st_dev != root_device or True,
+                    "is_separate_mount": True,
                     "read_only": read_only,
                 })
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
@@ -430,12 +433,14 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
         Path("/etc"), Path("/usr"), Path("/opt"), Path("/boot"), Path("/root"),
     }
     overlaps_bench = (current in bench_dir.parents or bench_dir in current.parents) and current != default_backup
+    can_write = os.access(current, os.W_OK | os.X_OK)
     can_select = (
         current != Path("/")
         and current not in protected_exact
         and current != Path.home().resolve()
         and not os.path.ismount(current)
         and not overlaps_bench
+        and can_write
     )
     return {
         "mount_path": str(resolved_root),
