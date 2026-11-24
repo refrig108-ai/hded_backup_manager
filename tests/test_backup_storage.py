@@ -131,6 +131,19 @@ class BackupDirectoryTests(unittest.TestCase):
         self.assertTrue(rows[0]["complete"])
         self.assertEqual(list(rows[0]["files"]), ["database.sql.gz"])
 
+    def test_retention_does_not_delete_legacy_multifile_backups(self) -> None:
+        from hded_backup_manager.backup_engine import retention_plan
+        backup_dir = self.root / "backups"
+        backup_dir.mkdir()
+        prefix = "20261124_210000-hded_erp-"
+        (backup_dir / (prefix + "database.sql.gz")).write_bytes(b"db")
+        (backup_dir / (prefix + "files.tar")).write_bytes(b"files")
+        (backup_dir / (prefix + "private-files.tar")).write_bytes(b"private")
+        (backup_dir / (prefix + "site_config_backup.json")).write_text("{}")
+        plan = retention_plan(backup_dir, "hded_erp", {"daily": 1, "weekly": 1, "monthly": 1})
+        self.assertEqual(plan["complete_count"], 0)
+        self.assertEqual(plan["delete"], [])
+
     def test_one_time_completion_is_saved_with_private_permissions(self) -> None:
         path = self.site / "private" / "hded_backup_manager_settings.json"
         path.parent.mkdir(parents=True, exist_ok=True)
