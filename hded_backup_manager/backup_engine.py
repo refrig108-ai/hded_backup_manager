@@ -29,7 +29,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "monthly": {"enabled": False, "day": 1, "time": "02:00"},
     },
     "retention": {"auto_apply": False, "daily": 7, "weekly": 4, "monthly": 12},
-    "storage": {"local_path": "", "require_mount": False},
+    "storage": {"local_path": "", "require_mount": False, "previous_paths": []},
     "apps": {
         "archive_enabled": True,
         "auto_include_new_apps": True,
