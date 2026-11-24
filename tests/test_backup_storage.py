@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from subprocess import CompletedProcess
 
 from hded_backup_manager.backup_engine import (
     DEFAULT_SETTINGS,
