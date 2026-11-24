@@ -5,6 +5,8 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+from subprocess import CompletedProcess
 
 from hded_backup_manager.backup_engine import (
     DEFAULT_SETTINGS,
@@ -77,6 +79,17 @@ class BackupDirectoryTests(unittest.TestCase):
         settings = read_settings(path)
         self.assertEqual(settings["backup_mode"], "scheduled")
         self.assertIsNone(settings["one_time_completed_at"])
+
+    def test_virtualbox_shared_folder_keeps_mount_permissions(self) -> None:
+        target = self.root / "windows-share" / "backups"
+        with patch(
+            "hded_backup_manager.backup_engine._filesystem_type",
+            return_value="vboxsf",
+        ), patch("hded_backup_manager.backup_engine.os.chmod") as chmod:
+            result = self.prepare(str(target))
+        self.assertEqual(result, target)
+        chmod.assert_not_called()
+        self.assertTrue(os.access(result, os.W_OK | os.X_OK))
 
     def test_one_time_completion_is_saved_with_private_permissions(self) -> None:
         path = self.site / "private" / "hded_backup_manager_settings.json"
