@@ -132,12 +132,47 @@ def _mount_target(path: Path) -> str:
         return "/"
 
 
+def _is_vboxsf_path(path: Path) -> bool:
+    """Return True when path is backed by a VirtualBox shared-folder mount.
+
+    With x-systemd.automount, findmnt -T can report the autofs layer for the
+    mount root. Fall back to /proc/self/mountinfo to identify the vboxsf mount.
+    """
+    candidate = Path(os.path.normpath(str(path)))
+    if _filesystem_type(candidate) == "vboxsf":
+        return True
+
+    try:
+        mountinfo = Path("/proc/self/mountinfo").read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    for line in mountinfo.splitlines():
+        before, separator, after = line.partition(" - ")
+        if not separator:
+            continue
+        fields = before.split()
+        filesystem = after.split()
+        if len(fields) < 5 or not filesystem or filesystem[0].lower() != "vboxsf":
+            continue
+        mountpoint_raw = re.sub(
+            r"\\([0-7]{3})",
+            lambda match: chr(int(match.group(1), 8)),
+            fields[4],
+        )
+        mountpoint = Path(mountpoint_raw)
+        if candidate == mountpoint or mountpoint in candidate.parents:
+            return True
+    return False
+
+
 def backup_directory_details(path: Path) -> dict[str, Any]:
     path = Path(path).resolve(strict=True)
     root_device = os.stat("/").st_dev
     path_device = os.stat(path).st_dev
     mount_target = _mount_target(path)
-    filesystem_type = _filesystem_type(path)
+    is_virtualbox_share = _is_vboxsf_path(path)
+    filesystem_type = "vboxsf" if is_virtualbox_share else _filesystem_type(path)
     return {
         "path": str(path),
         "free_bytes": shutil.disk_usage(path).free,
@@ -200,7 +235,7 @@ def prepare_backup_directory(
         existing = existing.parent
     if not existing.is_dir() or existing.is_symlink():
         raise ValueError("المجلد الأب للمسار المحدد غير صالح")
-    if candidate.exists() and os.path.ismount(candidate) and _filesystem_type(candidate) != "vboxsf":
+    if candidate.exists() and os.path.ismount(candidate) and not _is_vboxsf_path(candidate):
         raise ValueError("هذا هو جذر القرص المركّب. اختر مجلداً فرعياً داخله مثل /mnt/backup/hded")
 
     if require_mount:
@@ -229,7 +264,7 @@ def prepare_backup_directory(
     # Backups contain database and private files. Normal Linux folders are
     # made owner-only. VirtualBox vboxsf shares inherit access from mount
     # options and the vboxsf group, so do not chmod the host folder from the guest.
-    filesystem_type = _filesystem_type(resolved)
+    filesystem_type = "vboxsf" if _is_vboxsf_path(resolved) else _filesystem_type(resolved)
     current_mode = os.stat(resolved).st_mode & 0o777
     if filesystem_type == "vboxsf":
         if current_mode & 0o007:
