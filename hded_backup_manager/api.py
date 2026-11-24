@@ -4,6 +4,7 @@ import gzip
 import json
 import os
 import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -257,7 +258,7 @@ def _mounted_storage_locations() -> list[dict]:
                 if key in seen:
                     continue
                 stat_result = os.stat(resolved)
-                free_bytes = __import__("shutil").disk_usage(resolved).free
+                free_bytes = shutil.disk_usage(resolved).free
             except OSError:
                 continue
 
@@ -337,7 +338,7 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
         root_device = os.stat(resolved_root).st_dev
         if os.stat(current).st_dev != root_device:
             frappe.throw(_("لا يمكن الانتقال عبر وحدة تخزين أخرى من داخل هذا المسار"))
-        free_bytes = __import__("shutil").disk_usage(current).free
+        free_bytes = shutil.disk_usage(current).free
     except FileNotFoundError:
         frappe.throw(_("المجلد غير موجود حالياً"))
     except PermissionError:
@@ -368,13 +369,29 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
     parent = str(current.parent) if current != resolved_root and resolved_root in current.parents else None
     if current == Path("/"):
         parent = None
+    bench_dir = _bench_dir()
+    default_backup = Path(frappe.get_site_path("private", "backups")).resolve(strict=False)
+    protected_exact = {
+        Path("/"), Path("/home"), Path("/mnt"), Path("/media"),
+        Path("/var"), Path("/var/lib"), Path("/var/log"), Path("/var/cache"),
+        Path("/tmp"), Path("/run"), Path("/dev"), Path("/proc"), Path("/sys"),
+        Path("/etc"), Path("/usr"), Path("/opt"), Path("/boot"), Path("/root"),
+    }
+    overlaps_bench = (current in bench_dir.parents or bench_dir in current.parents) and current != default_backup
+    can_select = (
+        current != Path("/")
+        and current not in protected_exact
+        and current != Path.home().resolve()
+        and not os.path.ismount(current)
+        and not overlaps_bench
+    )
     return {
         "mount_path": str(resolved_root),
         "mount_label": mount["label"],
         "mount_kind": mount["kind_label"],
         "current_path": str(current),
         "parent_path": parent,
-        "can_select": current != Path("/") and not os.path.ismount(current),
+        "can_select": can_select,
         "free_bytes": free_bytes,
         "directories": directories,
     }
