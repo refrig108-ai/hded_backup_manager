@@ -80,6 +80,7 @@ class BackupDirectoryTests(unittest.TestCase):
 
     def test_one_time_completion_is_saved_with_private_permissions(self) -> None:
         path = self.site / "private" / "hded_backup_manager_settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
         settings = dict(DEFAULT_SETTINGS)
         settings.update({
             "backup_mode": "one_time",
