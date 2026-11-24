@@ -87,7 +87,7 @@ class HDEDBBackupManager {
             <div id="backup-panel-settings" class="backup-tab-panel" data-panel="settings" role="tabpanel" hidden>
               <section class="backup-panel local-storage-panel">
                 <div class="panel-heading"><h3>مكان حفظ النسخ الاحتياطية</h3><span class="muted">التخزين المحلي</span></div>
-                <p class="muted">اختر مجلد النسخ على خادم Ubuntu. عند نقل النظام إلى جهاز آخر أو تغيير إعدادات Oracle VM VirtualBox أو اسم المشاركة، أضف المشاركة الجديدة من VirtualBox أولاً، ثم اضغط «اختيار / تغيير مجلد التخزين» لإعادة استعراض المشاركات واختيار المجلد الجديد. لا يعتمد التطبيق على حرف قرص Windows أو اسم مشاركة ثابت. بعد الاختيار افحص المسار ثم احفظه.</p>
+                <p class="muted">اختر مجلد حفظ ملف قاعدة البيانات المضغوط على خادم Ubuntu. عند نقل النظام إلى جهاز آخر أو تغيير إعدادات Oracle VM VirtualBox أو اسم المشاركة، أضف المشاركة الجديدة من VirtualBox أولاً، ثم اضغط «اختيار / تغيير مجلد التخزين» لإعادة استعراض المشاركات واختيار المجلد الجديد. لا يعتمد التطبيق على حرف قرص Windows أو اسم مشاركة ثابت. بعد الاختيار افحص المسار ثم احفظه.</p>
                 <div class="local-storage-fields">
                   <div><label for="backup-local-path">مسار مجلد النسخ</label><div class="backup-path-row"><input type="text" id="backup-local-path" class="form-control" dir="ltr" placeholder="/mnt/backup/hded"><button type="button" class="btn btn-default" id="backup-path-browse">${this.icon("folder", "small")} اختيار / تغيير مجلد التخزين</button></div></div>
                   <label class="switch-label"><input type="checkbox" id="backup-require-mount"> اشترط أن يكون المجلد على قرص/وحدة تخزين منفصلة موصولة</label>
@@ -129,8 +129,8 @@ class HDEDBBackupManager {
 
             <div id="backup-panel-apps" class="backup-tab-panel" data-panel="apps" role="tabpanel" hidden>
               <section class="backup-panel">
-                <div class="panel-heading"><h3>أرشفة مصادر التطبيقات</h3><label class="switch-label"><input type="checkbox" id="apps-archive-enabled"> تضمين مصادر التطبيقات في النسخ</label></div>
-                <label class="switch-label app-auto-label"><input type="checkbox" id="apps-auto-include"> إضافة التطبيقات الجديدة تلقائياً إلى النسخ</label>
+                <div class="panel-heading"><h3>مصادر التطبيقات</h3><span class="muted">غير مشمولة — النسخ الجديدة تحفظ قاعدة البيانات فقط</span></div>
+                <p class="muted app-auto-label">لا يتم نسخ مجلدات التطبيقات أو ملفاتها. تبقى التطبيقات المثبتة كما هي على الجهاز ولا تدخل في ملف النسخة.</p>
                 <p class="muted">عند تفعيل الاكتشاف التلقائي، يضيف النظام التطبيقات الموجودة في مجلد apps والتي تحتوي على hooks.py، بما فيها التطبيقات التي تنشئها لاحقاً. تطبيقا frappe وerpnext غير محددين افتراضياً لتقليل حجم الأرشيف؛ يمكنك تحديدهما هنا. تُستبعد المجلدات المؤقتة وبيئات Python ومجلدات Git وبعض الملفات السرية الشائعة.</p>
                 <div class="panel-heading app-list-heading"><h3>التطبيقات المكتشفة</h3><span class="muted" id="app-count">—</span></div>
                 <div id="apps-list" class="apps-list"><p class="muted">جارٍ اكتشاف التطبيقات...</p></div>
@@ -141,7 +141,7 @@ class HDEDBBackupManager {
             <div id="backup-panel-external" class="backup-tab-panel" data-panel="external" role="tabpanel" hidden>
               <section class="backup-panel">
                 <div class="panel-heading"><h3>التخزين السحابي للنسخ الكاملة</h3><span class="state-pill is-off">الربط الفعلي غير مفعّل</span></div>
-                <p class="muted">تستخدم هذه الخدمات لحفظ ملفات النسخ خارج جهاز ERPNext. أزرار الإعداد تعرض خطوات التجهيز؛ لن تظهر الخدمة متصلة قبل تنفيذ OAuth ونجاح رفع ملف تجريبي والتحقق منه.</p>
+                <p class="muted">تستخدم هذه الخدمات لحفظ ملف قاعدة البيانات المضغوط خارج جهاز ERPNext. أزرار الإعداد تعرض خطوات التجهيز؛ لن تظهر الخدمة متصلة قبل تنفيذ OAuth ونجاح رفع ملف تجريبي والتحقق منه.</p>
                 <div class="provider-grid">
                   <article class="provider-card provider-drive">
                     <div class="provider-title">${this.providerLogo("google-drive")}<div><h4>Google Drive</h4><p>تخزين قاعدة البيانات والملفات وأرشيف التطبيقات خارج الجهاز.</p></div></div>
@@ -275,8 +275,8 @@ class HDEDBBackupManager {
         this.body.find("#retention-daily").val(retention.daily ?? 7);
         this.body.find("#retention-weekly").val(retention.weekly ?? 4);
         this.body.find("#retention-monthly").val(retention.monthly ?? 12);
-        this.body.find("#apps-archive-enabled").prop("checked", apps.archive_enabled !== false);
-        this.body.find("#apps-auto-include").prop("checked", apps.auto_include_new_apps !== false);
+        this.body.find("#apps-archive-enabled").prop("checked", false).prop("disabled", true);
+        this.body.find("#apps-auto-include").prop("checked", false).prop("disabled", true);
         this.renderApps(data.apps || []);
         this.renderEmailConnections(data.email_connections || {});
 
