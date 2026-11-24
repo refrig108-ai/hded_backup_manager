@@ -21,7 +21,7 @@ APP_ARCHIVE_SUFFIX = "apps.tar.gz"
 TIMESTAMP_RE = re.compile(r"^(\d{8}_\d{6})-(.+?)-(database\.sql\.gz|files\.tar|private-files\.tar|site_config_backup\.json|apps\.tar\.gz)$")
 APP_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "version": 2,
+    "version": 3,
     "schedule_enabled": True,
     "schedule": {
         "daily": {"enabled": True, "time": "02:00"},
@@ -130,6 +130,15 @@ def prepare_backup_directory(
         raise ValueError("لا يمكن اختيار جذر النظام كمجلد للنسخ")
     if not is_default:
         home = Path.home().resolve()
+        protected_targets = {
+            Path("/"), Path("/home"), Path("/root"), Path("/mnt"), Path("/media"),
+            Path("/var"), Path("/var/lib"), Path("/var/log"), Path("/var/cache"),
+            Path("/var/tmp"), Path("/tmp"), Path("/run"), Path("/dev"), Path("/proc"),
+            Path("/sys"), Path("/srv"), Path("/opt"), Path("/etc"), Path("/usr"),
+            Path("/boot"), Path("/bin"), Path("/sbin"), Path("/lib"), Path("/lib64"),
+        }
+        if candidate in protected_targets:
+            raise ValueError("لا تختر مجلد نظام أو جذر قرص؛ أنشئ مجلداً فرعياً مخصصاً للنسخ")
         if candidate == home or candidate in bench_dir.parents or bench_dir in candidate.parents:
             raise ValueError("اختر مجلداً مخصصاً خارج مجلد Bench ومجلد المنزل نفسه")
 
@@ -143,6 +152,8 @@ def prepare_backup_directory(
         existing = existing.parent
     if not existing.is_dir() or existing.is_symlink():
         raise ValueError("المجلد الأب للمسار المحدد غير صالح")
+    if candidate.exists() and os.path.ismount(candidate):
+        raise ValueError("هذا هو جذر القرص المركّب. اختر مجلداً فرعياً داخله مثل /mnt/backup/hded")
 
     if require_mount:
         details = backup_directory_details(existing)
