@@ -286,7 +286,7 @@ class HDEDBBackupManager {
             const storage = item.storage || "active";
             const storageLabel = storage === "active" ? '<div class="muted">المجلد المحدد حالياً</div>' : '<div class="muted">مجلد سابق</div>';
             const links = Object.entries(item.files || {}).map(([kind, filename]) => `<button type="button" class="btn btn-xs download-backup download-${kind}" data-filename="${frappe.utils.escape_html(filename)}" data-storage="${storage}">${this.icon("download", "small")} ${labels[kind] || kind}</button>`).join(" ");
-            const appState = item.apps_available ? '<span class="muted">أرشيف التطبيقات محفوظ</span>' : '<span class="muted">لا يوجد أرشيف تطبيقات</span>';
+            const appState = item.apps_available ? '<span class="muted">أرشيف تطبيقات ضمن نسخة قديمة</span>' : '<span class="muted">نسخة قاعدة بيانات فقط</span>';
             return `<tr><td>${frappe.utils.escape_html(item.created)}</td><td>${state} <span class="muted">(${item.file_count}/${item.file_total})</span><div>${appState}</div>${storageLabel}</td><td>${frappe.utils.escape_html(item.size_label)}</td><td>${links}</td><td><button type="button" class="btn btn-xs verify-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${item.complete ? "" : "disabled"}>${this.icon("shield", "small")} فحص السلامة</button></td></tr>`;
         }).join("");
         this.body.find("#backup-rows").html(rows || '<tr><td colspan="5" class="text-center muted">لا توجد نسخ احتياطية لهذا الموقع</td></tr>');
@@ -420,6 +420,7 @@ class HDEDBBackupManager {
             primary_action: () => dialog.hide(),
         });
         dialog.show();
+        dialog.$wrapper.addClass("hded-storage-dialog");
         const container = dialog.fields_dict.storage_browser.$wrapper;
         container.html('<div class="storage-browser-loading">جارٍ اكتشاف الأقراص ووحدات التخزين المركّبة...</div>');
 
@@ -639,8 +640,8 @@ class HDEDBBackupManager {
             frappe.msgprint("تم تنفيذ النسخة المحددة لمرة واحدة بالفعل.");
             return;
         }
-        frappe.confirm("هل تريد بدء إنشاء نسخة كاملة الآن، بما في ذلك مصادر التطبيقات المحددة؟", async () => {
-            this.showAlert("تم إرسال الطلب. يجري إنشاء نسخة قاعدة البيانات والملفات ثم أرشفة مصادر التطبيقات...", "info");
+        frappe.confirm("هل تريد إنشاء نسخة مضغوطة من قاعدة البيانات فقط؟ لن يتم نسخ ملفات الموقع أو المرفقات أو مصادر التطبيقات.", async () => {
+            this.showAlert("يجري إنشاء ملف قاعدة البيانات المضغوط فقط...", "info");
             try { await this.call("start_backup"); this.pollBackup(0); }
             catch (error) { this.showAlert("تعذر بدء النسخ الاحتياطي. راجع سجل خدمة hded-erp-backup.", "danger"); }
         });
@@ -652,7 +653,7 @@ class HDEDBBackupManager {
                 const data = await this.call("get_dashboard");
                 this.renderData(data);
                 if (data.status && data.status.service_active && attempt < 540) {
-                    this.showAlert("لا تزال عملية النسخ تعمل، بما في ذلك أرشفة التطبيقات. سيتم تحديث الحالة تلقائياً...", "info");
+                    this.showAlert("لا تزال عملية نسخ قاعدة البيانات تعمل. سيتم تحديث الحالة تلقائياً...", "info");
                     this.pollBackup(attempt + 1);
                     return;
                 }
@@ -666,7 +667,7 @@ class HDEDBBackupManager {
     }
 
     async verify(timestamp, storage = "active") {
-        this.showAlert("يتم فحص ملفات النسخة وأرشيف التطبيقات إن وجد...", "info");
+        this.showAlert("يتم فحص ملف قاعدة البيانات المضغوط...", "info");
         try {
             const result = await this.call("verify_backup", { timestamp, storage });
             const detail = (result.checks || []).map((check) => `${check.ok ? "✓" : "✗"} ${check.name}`).join(" — ");
