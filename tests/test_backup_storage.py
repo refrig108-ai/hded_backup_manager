@@ -8,8 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hded_backup_manager.backup_engine import (
+    CORE_BACKUP_SUFFIXES,
     DEFAULT_SETTINGS,
     _is_vboxsf_path,
+    list_backup_sets,
     prepare_backup_directory,
     read_settings,
     write_settings,
@@ -117,6 +119,17 @@ class BackupDirectoryTests(unittest.TestCase):
             result = self.prepare(str(target))
         self.assertEqual(result, target)
         chmod.assert_not_called()
+
+    def test_database_only_backup_set_is_complete(self) -> None:
+        backup_dir = self.root / "backups"
+        backup_dir.mkdir()
+        database = backup_dir / "20261124_210000-hded_erp-database.sql.gz"
+        database.write_bytes(b"database dump")
+        rows = list_backup_sets(backup_dir, "hded_erp")
+        self.assertEqual(CORE_BACKUP_SUFFIXES, ("database.sql.gz",))
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["complete"])
+        self.assertEqual(list(rows[0]["files"]), ["database.sql.gz"])
 
     def test_one_time_completion_is_saved_with_private_permissions(self) -> None:
         path = self.site / "private" / "hded_backup_manager_settings.json"
