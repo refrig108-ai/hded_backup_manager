@@ -190,7 +190,10 @@ class HDEDBBackupManager {
         this.body.find("#save-settings, #save-settings-apps").on("click", () => this.saveSettings());
         this.body.find("#backup-path-test").on("click", () => this.testBackupPath());
         this.body.find("#backup-path-browse").on("click", () => this.openStorageBrowser());
-        this.body.find("#backup-mode").on("change", () => this.updateBackupModeUI(this.body.find("#backup-mode").val()));
+        this.body.find("#backup-mode").on("change", () => {
+            this.updateBackupModeUI(this.body.find("#backup-mode").val(), this.currentBackupSettings || {});
+            this.refreshPrimaryAction();
+        });
         this.body.find("#backup-storage-save").on("click", () => this.saveStorageSettings());
         this.body.find("#preview-retention").on("click", () => this.previewRetention());
         this.body.find("#apply-retention").on("click", () => this.applyRetention());
@@ -236,6 +239,7 @@ class HDEDBBackupManager {
 
     renderData(data) {
         const summary = data.summary || {}, status = data.status || {}, settings = data.settings || {};
+        this.currentBackupSettings = settings;
         const schedule = settings.schedule || {}, retention = settings.retention || {}, apps = settings.apps || {};
         this.body.find("#backup-count").text(summary.backup_count ?? 0);
         this.body.find("#backup-complete").text(summary.complete_count ?? 0);
@@ -251,11 +255,7 @@ class HDEDBBackupManager {
 
         this.body.find("#backup-mode").val(settings.backup_mode || "scheduled");
         this.updateBackupModeUI(settings.backup_mode || "scheduled", settings);
-        if ((settings.backup_mode || "scheduled") === "one_time" && settings.one_time_completed_at) {
-            this.page.set_primary_action("اكتملت النسخة الواحدة", () => frappe.msgprint("تم تنفيذ النسخة المحددة لمرة واحدة بالفعل. لن يبدأ النظام نسخة أخرى حتى تغيّر نمط الحفظ وتحفظ الإعدادات من جديد."), "check");
-        } else {
-            this.page.set_primary_action("إنشاء نسخة الآن", () => this.startBackup(), "database");
-        }
+        this.refreshPrimaryAction();
         this.body.find("#daily-enabled").prop("checked", !!(schedule.daily || {}).enabled);
         this.body.find("#daily-time").val((schedule.daily || {}).time || "02:00");
         this.body.find("#weekly-enabled").prop("checked", !!(schedule.weekly || {}).enabled);
@@ -371,6 +371,25 @@ class HDEDBBackupManager {
         });
         dialog.fields_dict.cloud_details.$wrapper.html(`<div class="cloud-setup-dialog"><ol>${list}</ol><div class="alert alert-warning">${frappe.utils.escape_html(provider.warning)}</div></div>`);
         dialog.show();
+    }
+
+    refreshPrimaryAction() {
+        const saved = this.currentBackupSettings || {};
+        const selectedMode = this.body.find("#backup-mode").val() || "scheduled";
+        const selectedPath = (this.body.find("#backup-local-path").val() || "").trim();
+        const savedPath = ((saved.storage || {}).local_path || "").trim();
+        const selectedMount = this.body.find("#backup-require-mount").is(":checked");
+        const savedMount = !!((saved.storage || {}).require_mount);
+        const unsaved = selectedMode !== (saved.backup_mode || "scheduled")
+            || selectedPath !== savedPath
+            || selectedMount !== savedMount;
+        if (unsaved) {
+            this.page.set_primary_action("احفظ الإعدادات أولاً", () => frappe.msgprint("احفظ نمط النسخ ومسار التخزين أولاً قبل بدء النسخ، حتى لا تُنشأ النسخة في وجهة أو بنمط غير المقصود."), "save");
+        } else if (selectedMode === "one_time" && saved.one_time_completed_at) {
+            this.page.set_primary_action("اكتملت النسخة الواحدة", () => frappe.msgprint("تم تنفيذ النسخة المحددة لمرة واحدة بالفعل. لن يبدأ النظام نسخة أخرى حتى تغيّر نمط الحفظ وتحفظ الإعدادات من جديد."), "check");
+        } else {
+            this.page.set_primary_action("إنشاء نسخة الآن", () => this.startBackup(), "database");
+        }
     }
 
     updateBackupModeUI(mode, settings = {}) {
@@ -590,6 +609,20 @@ class HDEDBBackupManager {
     }
 
     async startBackup() {
+        const saved = this.currentBackupSettings || {};
+        const selectedMode = this.body.find("#backup-mode").val() || "scheduled";
+        const selectedPath = (this.body.find("#backup-local-path").val() || "").trim();
+        const savedPath = ((saved.storage || {}).local_path || "").trim();
+        const selectedMount = this.body.find("#backup-require-mount").is(":checked");
+        const savedMount = !!((saved.storage || {}).require_mount);
+        if (selectedMode !== (saved.backup_mode || "scheduled") || selectedPath !== savedPath || selectedMount !== savedMount) {
+            frappe.msgprint("احفظ نمط النسخ ومسار التخزين أولاً قبل بدء النسخ.");
+            return;
+        }
+        if (selectedMode === "one_time" && saved.one_time_completed_at) {
+            frappe.msgprint("تم تنفيذ النسخة المحددة لمرة واحدة بالفعل.");
+            return;
+        }
         frappe.confirm("هل تريد بدء إنشاء نسخة كاملة الآن، بما في ذلك مصادر التطبيقات المحددة؟", async () => {
             this.showAlert("تم إرسال الطلب. يجري إنشاء نسخة قاعدة البيانات والملفات ثم أرشفة مصادر التطبيقات...", "info");
             try { await this.call("start_backup"); this.pollBackup(0); }
