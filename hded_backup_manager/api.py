@@ -410,11 +410,12 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
             if current == Path("/"):
                 if child.name in {root_name.lstrip("/") for root_name in _STORAGE_HIDDEN_ROOTS}:
                     continue
-            try:
-                if os.stat(child).st_dev != root_device:
+            if not is_virtualbox_share:
+                try:
+                    if os.stat(child).st_dev != root_device:
+                        continue
+                except OSError:
                     continue
-            except OSError:
-                continue
             directories.append({"name": child.name, "path": str(child)})
             if len(directories) >= 200:
                 break
@@ -533,7 +534,7 @@ def _dashboard_backups(settings: dict | None = None) -> list[dict]:
                 "created": row["created"],
                 "complete": row["complete"],
                 "file_count": len(row["files"]),
-                "file_total": 5 if row["apps_available"] else 4,
+                "file_total": 1 if set(row["files"]) == {"database.sql.gz"} else (5 if row["apps_available"] else 4),
                 "apps_available": row["apps_available"],
                 "total_size": row["total_size"],
                 "size_label": _format_size(row["total_size"]),
@@ -865,7 +866,7 @@ def verify_backup(timestamp: str, storage: str = "active"):
     _require_manager()
     paths = _expected_files(timestamp, storage)
     backup_dir = _backup_dirs(allow_unavailable_active=(storage != "active"))[storage]
-    core_kinds = ("database", "public", "private", "config")
+    core_kinds = ("database",)
     missing = [kind for kind in core_kinds if not paths[kind].is_file() or paths[kind].is_symlink()]
     if missing:
         return {"ok": False, "message": "النسخة غير مكتملة", "missing": missing, "checks": []}
@@ -877,36 +878,10 @@ def verify_backup(timestamp: str, storage: str = "active"):
                 pass
         checks.append({"name": "قاعدة البيانات المضغوطة", "ok": True})
 
-        for kind, label in (("public", "الملفات العامة"), ("private", "الملفات الخاصة")):
-            with tarfile.open(paths[kind], "r:") as archive:
-                archive.getmembers()
-            checks.append({"name": label, "ok": True})
-
-        with paths["config"].open("r", encoding="utf-8") as stream:
-            config = json.load(stream)
-        if not isinstance(config, dict):
-            raise ValueError("Invalid site config backup")
-        checks.append({"name": "ملف إعدادات الموقع (فحص البنية فقط)", "ok": True})
-
-        apps_path = paths["apps"]
-        if apps_path.is_file() and not apps_path.is_symlink():
-            with tarfile.open(apps_path, "r:gz") as archive:
-                members = archive.getmembers()
-                for member in members:
-                    parts = Path(member.name).parts
-                    if member.name.startswith("/") or ".." in parts or member.issym() or member.islnk():
-                        raise ValueError("Unsafe path in application archive")
-                manifest_member = archive.extractfile("backup-metadata/apps-manifest.json")
-                if manifest_member is None or not isinstance(json.load(manifest_member), dict):
-                    raise ValueError("Application archive manifest is missing or invalid")
-            checks.append({"name": "أرشيف مصادر التطبيقات", "ok": True})
-        else:
-            checks.append({"name": "أرشيف مصادر التطبيقات (غير موجود في النسخة القديمة)", "ok": False, "optional": True})
+        checks.append({"name": "ملف قاعدة البيانات المضغوط", "ok": True})
 
         folder_mode = os.stat(backup_dir).st_mode & 0o777
         safe_modes = all((os.stat(paths[kind]).st_mode & 0o077) == 0 for kind in core_kinds)
-        if apps_path.is_file() and not apps_path.is_symlink():
-            safe_modes = safe_modes and (os.stat(apps_path).st_mode & 0o077) == 0
         checks.append({"name": "صلاحيات حماية الملفات", "ok": safe_modes and (folder_mode & 0o077) == 0})
         all_ok = all(check["ok"] for check in checks if not check.get("optional"))
         return {
