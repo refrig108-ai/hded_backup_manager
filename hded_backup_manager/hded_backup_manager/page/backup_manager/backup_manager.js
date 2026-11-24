@@ -87,7 +87,7 @@ class HDEDBBackupManager {
                   <div><label for="backup-local-path">مسار مجلد النسخ</label><input type="text" id="backup-local-path" class="form-control" dir="ltr" placeholder="/mnt/backup/hded"></div>
                   <label class="switch-label"><input type="checkbox" id="backup-require-mount"> اشترط أن يكون المجلد على قرص/وحدة تخزين منفصلة موصولة</label>
                 </div>
-                <div class="local-storage-actions"><button type="button" class="btn btn-default" id="backup-path-test">${this.icon("shield")} فحص المسار وإمكانية الكتابة</button><span id="backup-path-status" class="muted" aria-live="polite"></span></div>
+                <div class="local-storage-actions"><button type="button" class="btn btn-default" id="backup-path-test">${this.icon("shield")} فحص المسار وإمكانية الكتابة</button><button type="button" class="btn btn-primary" id="backup-storage-save">حفظ مسار التخزين فقط</button><span id="backup-path-status" class="muted" aria-live="polite"></span></div>
                 <p class="muted">هذا مسار على خادم Ubuntu وليس على جهاز المتصفح. الفحص ينشئ المجلد عند الحاجة ويتأكد من صلاحيات الحماية والمساحة المتاحة. عند تغيير المسار لا تُنقل النسخ القديمة أو تُحذف؛ يحتفظ التطبيق بسجل لمسارات التخزين السابقة ويعرض نسخها كمجلد سابق.</p>
               </section>
               <section class="backup-panel">
@@ -180,6 +180,7 @@ class HDEDBBackupManager {
 
         this.body.find("#save-settings, #save-settings-apps").on("click", () => this.saveSettings());
         this.body.find("#backup-path-test").on("click", () => this.testBackupPath());
+        this.body.find("#backup-storage-save").on("click", () => this.saveStorageSettings());
         this.body.find("#preview-retention").on("click", () => this.previewRetention());
         this.body.find("#apply-retention").on("click", () => this.applyRetention());
         this.body.find(".email-connect-button").on("click", (event) => this.openEmailConnection($(event.currentTarget).attr("data-email-provider")));
@@ -368,6 +369,30 @@ class HDEDBBackupManager {
             status.text("فشل فحص المسار. راجع رسالة الخطأ.").addClass("text-danger");
             this.showAlert("تعذر اعتماد مجلد التخزين. تحقق من المسار والقرص والصلاحيات.", "danger");
         }
+    }
+
+    async saveStorageSettings() {
+        const storage = {
+            local_path: (this.body.find("#backup-local-path").val() || "").trim(),
+            require_mount: this.body.find("#backup-require-mount").is(":checked"),
+        };
+        if (storage.require_mount && !storage.local_path) {
+            frappe.msgprint("أدخل مسار مجلد القرص الخارجي أولاً.");
+            return;
+        }
+        frappe.confirm(
+            "سيتم فحص مسار التخزين وحفظه فقط. لن تتغير مواعيد النسخ أو حالة الجدولة أو سياسة الاحتفاظ أو إعدادات التطبيقات. هل تريد المتابعة؟",
+            async () => {
+                this.showAlert("جارٍ فحص مسار التخزين وحفظه...", "info");
+                try {
+                    const result = await this.call("save_storage_settings", { storage_json: JSON.stringify(storage) });
+                    this.showAlert(result.message || "تم حفظ مسار التخزين", "success");
+                    await this.load();
+                } catch (error) {
+                    this.showAlert("تعذر حفظ مسار التخزين. تحقق من المسار والقرص والصلاحيات.", "danger");
+                }
+            }
+        );
     }
 
     collectSettings() {
