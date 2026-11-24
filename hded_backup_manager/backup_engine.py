@@ -22,6 +22,9 @@ TIMESTAMP_RE = re.compile(r"^(\d{8}_\d{6})-(.+?)-(database\.sql\.gz|files\.tar|p
 APP_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 DEFAULT_SETTINGS: dict[str, Any] = {
     "version": 3,
+    "backup_mode": "scheduled",
+    "one_time_completed_at": None,
+    "one_time_timestamp": None,
     "schedule_enabled": True,
     "schedule": {
         "daily": {"enabled": True, "time": "02:00"},
@@ -60,6 +63,11 @@ def read_settings(path: Path) -> dict[str, Any]:
                     settings[key].update(raw[key])
             if "schedule_enabled" in raw:
                 settings["schedule_enabled"] = bool(raw["schedule_enabled"])
+            if raw.get("backup_mode") in {"scheduled", "one_time"}:
+                settings["backup_mode"] = raw["backup_mode"]
+            for key in ("one_time_completed_at", "one_time_timestamp"):
+                if key in raw:
+                    settings[key] = raw[key]
             if "version" in raw:
                 settings["version"] = raw["version"]
     except FileNotFoundError:
@@ -67,6 +75,28 @@ def read_settings(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         raise RuntimeError(f"Invalid backup manager settings file: {path}")
     return settings
+
+
+
+def write_settings(path: Path, settings: dict[str, Any]) -> None:
+    """Atomically save private backup-manager settings with owner-only permissions."""
+    path = Path(path)
+    if path.is_symlink() or path.resolve().parent != path.parent.resolve(strict=True):
+        raise RuntimeError(f"Unsafe backup manager settings path: {path}")
+    fd, temp_name = tempfile.mkstemp(prefix=".hded-backup-settings-", dir=path.parent)
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(settings, stream, ensure_ascii=False, indent=2)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temp, 0o600)
+        os.replace(temp, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        temp.unlink(missing_ok=True)
+        raise
 
 
 def _mount_target(path: Path) -> str:
