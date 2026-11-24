@@ -32,6 +32,9 @@ class HDEDBBackupManager {
             refresh: '<path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.5-3"/>',
             link: '<path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"/>',
             folder: '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 9h18"/>',
+            "folder-up": '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 17v-7m-3 3 3-3 3 3"/>',
+            "hard-drive": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><path d="M7 10h.01M11 10h.01"/>',
+            check: '<path d="m5 12 4 4L19 6"/>',
             database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
         };
         const allowedSizes = ["nav", "button", "small", "provider"];
@@ -84,9 +87,9 @@ class HDEDBBackupManager {
             <div id="backup-panel-settings" class="backup-tab-panel" data-panel="settings" role="tabpanel" hidden>
               <section class="backup-panel local-storage-panel">
                 <div class="panel-heading"><h3>مكان حفظ النسخ الاحتياطية</h3><span class="muted">التخزين المحلي</span></div>
-                <p class="muted">اكتب المسار الكامل لمجلد على خادم Ubuntu. اتركه فارغاً لاستخدام مجلد الموقع الافتراضي. يمكن اختيار مجلد على قرص داخلي أو قرص خارجي موصول بالخادم.</p>
+                <p class="muted">اختر مجلد النسخ على خادم Ubuntu. عند نقل النظام إلى جهاز آخر أو تغيير إعدادات Oracle VM VirtualBox أو اسم المشاركة، أضف المشاركة الجديدة من VirtualBox أولاً، ثم اضغط «اختيار / تغيير مجلد التخزين» لإعادة استعراض المشاركات واختيار المجلد الجديد. لا يعتمد التطبيق على حرف قرص Windows أو اسم مشاركة ثابت. بعد الاختيار افحص المسار ثم احفظه.</p>
                 <div class="local-storage-fields">
-                  <div><label for="backup-local-path">مسار مجلد النسخ</label><div class="backup-path-row"><input type="text" id="backup-local-path" class="form-control" dir="ltr" placeholder="/mnt/backup/hded"><button type="button" class="btn btn-default" id="backup-path-browse">${this.icon("folder")} استعراض الأقراص والمجلدات</button></div></div>
+                  <div><label for="backup-local-path">مسار مجلد النسخ</label><div class="backup-path-row"><input type="text" id="backup-local-path" class="form-control" dir="ltr" placeholder="/mnt/backup/hded"><button type="button" class="btn btn-default" id="backup-path-browse">${this.icon("folder", "small")} اختيار / تغيير مجلد التخزين</button></div></div>
                   <label class="switch-label"><input type="checkbox" id="backup-require-mount"> اشترط أن يكون المجلد على قرص/وحدة تخزين منفصلة موصولة</label>
                 </div>
                 <div class="local-storage-actions"><button type="button" class="btn btn-default" id="backup-path-test">${this.icon("shield")} فحص المسار وإمكانية الكتابة</button><button type="button" class="btn btn-primary" id="backup-storage-save">حفظ مسار التخزين فقط</button><span id="backup-path-status" class="muted" aria-live="polite"></span></div>
@@ -464,10 +467,14 @@ class HDEDBBackupManager {
                 const kind = frappe.utils.escape_html(item.kind_label);
                 const size = frappe.utils.escape_html(item.size || "غير معروف");
                 const free = this.formatBytes(item.free_bytes);
-                return `<button type="button" class="storage-volume-open" data-mount="${path}" data-path="${path}">
-                    <span class="storage-volume-icon">${this.icon("database", "small")}</span>
-                    <span class="storage-volume-info"><strong>${label}</strong><small>${kind} · ${size} · المتاح ${free}</small><code>${path}</code></span>
-                    <span class="storage-volume-arrow">فتح المجلدات ←</span>
+                const isWindowsShare = item.filesystem === "vboxsf";
+                const volumeIcon = isWindowsShare ? "folder" : "hard-drive";
+                const volumeClass = isWindowsShare ? " storage-volume-open--windows" : "";
+                const readOnlyLabel = item.read_only ? " · للقراءة فقط" : "";
+                return `<button type="button" class="storage-volume-open${volumeClass}" data-mount="${path}" data-path="${path}">
+                    <span class="storage-volume-icon ${isWindowsShare ? "storage-volume-icon--windows" : "storage-volume-icon--drive"}">${this.icon(volumeIcon, "small")}</span>
+                    <span class="storage-volume-info"><strong>${label}</strong><small>${kind} · ${size} · المتاح ${free}${readOnlyLabel}</small><code>${path}</code></span>
+                    <span class="storage-volume-arrow">استعراض المجلدات ←</span>
                 </button>`;
             }).join("");
             container.html(`<div class="storage-browser-intro">للحفظ على قرص Windows، أنشئ مجلداً مثل D:\\HDED_Backups في Windows ثم أضفه من إعدادات الآلة الافتراضية: VirtualBox Manager ← Settings ← Shared Folders ← Add. اختر المجلد، واجعل اسم المشاركة HDED_Backups، وفعّل Auto-mount وMake Permanent، واترك Read-only غير محدد. بعد تشغيل Ubuntu سيظهر عادةً كـ /media/sf_HDED_Backups. اختر مجلداً فرعياً داخله. وصول Ubuntu إلى المشاركة يتطلب عضوية المستخدم في مجموعة vboxsf. تظهر أدناه الأقراص والمشاركات المركّبة فقط.</div><div class="storage-volume-list">${cards}</div>`);
@@ -484,16 +491,20 @@ class HDEDBBackupManager {
             const current = frappe.utils.escape_html(result.current_path);
             const mount = frappe.utils.escape_html(result.mount_path);
             const kind = frappe.utils.escape_html(result.mount_kind || "");
-            const parent = result.parent_path ? `<button type="button" class="btn btn-default storage-folder-up" data-mount="${mount}" data-path="${frappe.utils.escape_html(result.parent_path)}">${this.icon("folder", "small")} رجوع إلى المجلد الأعلى</button>` : "";
+            const parent = result.parent_path ? `<button type="button" class="btn btn-default storage-folder-up" data-mount="${mount}" data-path="${frappe.utils.escape_html(result.parent_path)}">${this.icon("folder-up", "small")} المجلد الأعلى</button>` : "";
             const folders = (result.directories || []).map((item) => {
                 const name = frappe.utils.escape_html(item.name);
                 const child = frappe.utils.escape_html(item.path);
-                return `<button type="button" class="storage-folder-open" data-mount="${mount}" data-path="${child}">${this.icon("folder", "small")} <span>${name}</span><span class="storage-folder-open-label">فتح</span></button>`;
+                return `<button type="button" class="storage-folder-open" data-mount="${mount}" data-path="${child}"><span class="storage-folder-icon">${this.icon("folder", "small")}</span><span>${name}</span><span class="storage-folder-open-label">فتح</span></button>`;
             }).join("");
             const choose = result.can_select
-                ? `<button type="button" class="btn btn-primary storage-folder-choose" data-mount="${mount}" data-path="${current}">اختيار هذا المجلد للحفظ</button>`
+                ? `<button type="button" class="btn btn-primary storage-folder-choose" data-mount="${mount}" data-path="${current}">${this.icon("check", "small")} اختيار هذا المجلد للحفظ</button>`
                 : '<span class="muted">هذا المجلد غير قابل للاختيار أو لا توجد صلاحية كتابة إليه.</span>';
-            container.html(`<div class="storage-browser-toolbar"><button type="button" class="btn btn-default storage-back-volumes">${this.icon("database", "small")} الأقراص</button>${parent}<span class="storage-browser-kind">${kind}</span></div><div class="storage-browser-current"><small>المسار الحالي</small><code dir="ltr">${current}</code><small>المساحة المتاحة: ${this.formatBytes(result.free_bytes)}</small></div><div class="storage-folder-list">${folders || '<p class="muted">لا توجد مجلدات فرعية ظاهرة داخل هذا المجلد.</p>'}</div><div class="storage-browser-select">${choose}</div>`);
+            const emptyFolders = result.mount_filesystem === "vboxsf"
+                ? '<p class="muted">لا توجد مجلدات فرعية ظاهرة. يمكنك إنشاء مجلد داخل مشاركة Windows من مستكشف الملفات في Windows، ثم العودة إلى هنا لاختياره.</p>'
+                : '<p class="muted">لا توجد مجلدات فرعية ظاهرة داخل هذا المجلد.</p>';
+            const readOnlyNote = result.mount_read_only ? '<span class="storage-browser-readonly">هذه المشاركة للقراءة فقط ولا يمكن استخدامها لحفظ النسخ.</span>' : "";
+            container.html(`<div class="storage-browser-toolbar"><button type="button" class="btn btn-default storage-back-volumes">${this.icon("hard-drive", "small")} وحدات التخزين</button>${parent}<span class="storage-browser-kind">${kind}</span></div><div class="storage-browser-current"><small>المسار الحالي</small><code dir="ltr">${current}</code><small>المساحة المتاحة: ${this.formatBytes(result.free_bytes)}</small>${readOnlyNote}</div><div class="storage-folder-list">${folders || emptyFolders}</div><div class="storage-browser-select">${choose}</div>`);
         } catch (error) {
             container.html('<div class="alert alert-danger storage-browser-error">تعذر استعراض هذا المجلد. قد تكون الوحدة مفصولة أو لا توجد صلاحية قراءة.</div><button type="button" class="btn btn-default storage-back-volumes">العودة إلى الأقراص</button>');
         }
