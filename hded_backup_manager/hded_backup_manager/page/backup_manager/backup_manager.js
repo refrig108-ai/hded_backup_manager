@@ -194,6 +194,8 @@ class HDEDBBackupManager {
             this.updateBackupModeUI(this.body.find("#backup-mode").val(), this.currentBackupSettings || {});
             this.refreshPrimaryAction();
         });
+        this.body.find("#backup-local-path").on("input change", () => this.refreshPrimaryAction());
+        this.body.find("#backup-require-mount").on("change", () => this.refreshPrimaryAction());
         this.body.find("#backup-storage-save").on("click", () => this.saveStorageSettings());
         this.body.find("#preview-retention").on("click", () => this.previewRetention());
         this.body.find("#apply-retention").on("click", () => this.applyRetention());
@@ -436,6 +438,7 @@ class HDEDBBackupManager {
                 const mountPath = button.attr("data-mount");
                 this.body.find("#backup-local-path").val(path);
                 this.body.find("#backup-require-mount").prop("checked", mountPath !== "/");
+                this.refreshPrimaryAction();
                 this.body.find("#backup-path-status").text("تم اختيار المجلد. نفّذ الفحص ثم احفظ المسار.").removeClass("text-danger").addClass("text-success");
                 dialog.hide();
                 this.showAlert(`تم اختيار مجلد التخزين: ${path}. افحص المسار ثم احفظه.`, "success");
