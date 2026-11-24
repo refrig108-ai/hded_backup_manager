@@ -391,7 +391,8 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
         if not current.is_dir():
             frappe.throw(_("المسار المحدد ليس مجلداً"))
         root_device = os.stat(resolved_root).st_dev
-        if os.stat(current).st_dev != root_device:
+        is_virtualbox_share = mount.get("filesystem") == "vboxsf"
+        if not is_virtualbox_share and os.stat(current).st_dev != root_device:
             frappe.throw(_("لا يمكن الانتقال عبر وحدة تخزين أخرى من داخل هذا المسار"))
         free_bytes = shutil.disk_usage(current).free
     except FileNotFoundError:
@@ -435,7 +436,6 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
     }
     overlaps_bench = (current in bench_dir.parents or bench_dir in current.parents) and current != default_backup
     can_write = os.access(current, os.W_OK | os.X_OK)
-    is_virtualbox_share = mount.get("filesystem") == "vboxsf"
     can_select = (
         current != Path("/")
         and current not in protected_exact
@@ -881,8 +881,10 @@ def verify_backup(timestamp: str, storage: str = "active"):
         checks.append({"name": "ملف قاعدة البيانات المضغوط", "ok": True})
 
         folder_mode = os.stat(backup_dir).st_mode & 0o777
-        safe_modes = all((os.stat(paths[kind]).st_mode & 0o077) == 0 for kind in core_kinds)
-        checks.append({"name": "صلاحيات حماية الملفات", "ok": safe_modes and (folder_mode & 0o077) == 0})
+        is_vboxsf = backup_directory_details(backup_dir).get("filesystem_type") == "vboxsf"
+        forbidden_bits = 0o007 if is_vboxsf else 0o077
+        safe_modes = all((os.stat(paths[kind]).st_mode & forbidden_bits) == 0 for kind in core_kinds)
+        checks.append({"name": "صلاحيات حماية الملفات", "ok": safe_modes and (folder_mode & forbidden_bits) == 0})
         all_ok = all(check["ok"] for check in checks if not check.get("optional"))
         return {
             "ok": all_ok,
