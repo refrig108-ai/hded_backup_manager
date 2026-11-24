@@ -455,7 +455,7 @@ class HDEDBBackupManager {
             const result = await this.call("get_storage_locations");
             const locations = result.locations || [];
             if (!locations.length) {
-                container.html('<div class="alert alert-warning">لم يتم العثور على أقراص محلية مركّبة يمكن استعراضها.</div>');
+                container.html('<div class="alert alert-warning">لم يتم العثور على وحدات تخزين مركّبة. لإظهار مجلد Windows، أضفه أولاً من VirtualBox ← Settings ← Shared Folders مع تفعيل Auto-mount وMake Permanent، ثم أعد تشغيل Ubuntu.</div>');
                 return;
             }
             const cards = locations.map((item) => {
@@ -470,7 +470,7 @@ class HDEDBBackupManager {
                     <span class="storage-volume-arrow">فتح المجلدات ←</span>
                 </button>`;
             }).join("");
-            container.html(`<div class="storage-browser-intro">اختر القرص الذي تريد حفظ النسخ عليه. هذه الأقراص موجودة على خادم Ubuntu داخل VirtualBox، وليست أقراص Windows أو الهاتف. تظهر وحدات التخزين المركّبة فقط؛ القرص غير المركّب يجب تركيبه في Ubuntu أولاً.</div><div class="storage-volume-list">${cards}</div>`);
+            container.html(`<div class="storage-browser-intro">للحفظ على قرص Windows، أنشئ مجلداً مثل D:\\HDED_Backups في Windows ثم أضفه من إعدادات الآلة الافتراضية: VirtualBox Manager ← Settings ← Shared Folders ← Add. اختر المجلد، واجعل اسم المشاركة HDED_Backups، وفعّل Auto-mount وMake Permanent، واترك Read-only غير محدد. بعد تشغيل Ubuntu سيظهر عادةً كـ /media/sf_HDED_Backups. اختر مجلداً فرعياً داخله. وصول Ubuntu إلى المشاركة يتطلب عضوية المستخدم في مجموعة vboxsf. تظهر أدناه الأقراص والمشاركات المركّبة فقط.</div><div class="storage-volume-list">${cards}</div>`);
         } catch (error) {
             container.html('<div class="alert alert-danger">تعذر قراءة الأقراص. تحقق من صلاحيات نظام التشغيل وسجل Frappe.</div>');
         }
