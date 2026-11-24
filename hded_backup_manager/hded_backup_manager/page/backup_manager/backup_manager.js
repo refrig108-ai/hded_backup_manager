@@ -88,7 +88,7 @@ class HDEDBBackupManager {
                   <label class="switch-label"><input type="checkbox" id="backup-require-mount"> اشترط أن يكون المجلد على قرص/وحدة تخزين منفصلة موصولة</label>
                 </div>
                 <div class="local-storage-actions"><button type="button" class="btn btn-default" id="backup-path-test">${this.icon("shield")} فحص المسار وإمكانية الكتابة</button><span id="backup-path-status" class="muted" aria-live="polite"></span></div>
-                <p class="muted">الفحص ينشئ المجلد عند الحاجة ويتأكد من صلاحيات الحماية والمساحة المتاحة. عند تغيير المسار لا تُنقل النسخ القديمة أو تُحذف؛ تبقى ظاهرة في قائمة النسخ كمجلد سابق.</p>
+                <p class="muted">هذا مسار على خادم Ubuntu وليس على جهاز المتصفح. الفحص ينشئ المجلد عند الحاجة ويتأكد من صلاحيات الحماية والمساحة المتاحة. عند تغيير المسار لا تُنقل النسخ القديمة أو تُحذف؛ يحتفظ التطبيق بسجل لمسارات التخزين السابقة ويعرض نسخها كمجلد سابق.</p>
               </section>
               <section class="backup-panel">
                 <div class="panel-heading"><h3>جدولة النسخ الاحتياطي</h3><label class="switch-label"><input type="checkbox" id="schedule-enabled"> تفعيل الجدولة</label></div>
