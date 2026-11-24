@@ -368,14 +368,11 @@ def start_backup():
     return {"message": "تم إرسال طلب إنشاء النسخة الاحتياطية إلى خدمة النظام"}
 
 
-def _validate_settings(raw: dict) -> dict:
-    current = _get_settings()
-    if not isinstance(raw, dict):
-        frappe.throw(_("صيغة الإعدادات غير صحيحة"))
-
-    storage_raw = raw.get("storage") or current.get("storage") or {}
+def _validate_storage_settings(storage_raw: dict, current_storage: dict | None = None) -> dict:
     if not isinstance(storage_raw, dict):
         frappe.throw(_("إعدادات التخزين المحلي غير صحيحة"))
+
+    current_storage = current_storage if isinstance(current_storage, dict) else {}
     local_path = str(storage_raw.get("local_path") or "").strip()
     require_mount_raw = storage_raw.get("require_mount", False)
     require_mount = require_mount_raw if isinstance(require_mount_raw, bool) else str(require_mount_raw).strip().lower() in {"1", "true", "yes", "on"}
@@ -393,7 +390,7 @@ def _validate_settings(raw: dict) -> dict:
             local_path = str(checked_path)
     except (OSError, ValueError, RuntimeError) as exc:
         frappe.throw(_("مسار تخزين النسخ غير صالح: {0}").format(str(exc)[:300]))
-    current_storage = current.get("storage", {})
+
     history = current_storage.get("previous_paths") or []
     if not isinstance(history, list):
         history = []
@@ -402,6 +399,7 @@ def _validate_settings(raw: dict) -> dict:
     old_active = Path(os.path.normpath(str(old_active)))
     if old_active != checked_path:
         history = [str(old_active), *history]
+
     new_path_string = str(checked_path)
     previous_paths = []
     for old_path in history:
@@ -410,11 +408,22 @@ def _validate_settings(raw: dict) -> dict:
         normalized = str(Path(os.path.normpath(str(Path(old_path).expanduser()))))
         if normalized != new_path_string and normalized not in previous_paths:
             previous_paths.append(normalized)
-    storage = {
+
+    return {
         "local_path": local_path,
         "require_mount": require_mount,
         "previous_paths": previous_paths[:20],
     }
+
+
+def _validate_settings(raw: dict) -> dict:
+    current = _get_settings()
+    if not isinstance(raw, dict):
+        frappe.throw(_("صيغة الإعدادات غير صحيحة"))
+
+    current_storage = current.get("storage", {})
+    storage_raw = raw.get("storage") or current_storage or {}
+    storage = _validate_storage_settings(storage_raw, current_storage)
 
     schedule_enabled = bool(raw.get("schedule_enabled", current.get("schedule_enabled", True)))
     schedule_raw = raw.get("schedule") or {}
@@ -482,6 +491,26 @@ def _validate_settings(raw: dict) -> dict:
         "retention": retention,
         "storage": storage,
         "apps": apps,
+    }
+
+
+@frappe.whitelist(methods=["POST"])
+def save_storage_settings(storage_json: str):
+    """Save only the local backup destination without changing systemd schedules."""
+    _require_manager()
+    try:
+        storage_raw = json.loads(storage_json or "{}")
+    except json.JSONDecodeError:
+        frappe.throw(_("تعذر قراءة بيانات مسار التخزين"))
+    if not isinstance(storage_raw, dict):
+        frappe.throw(_("صيغة إعدادات مسار التخزين غير صحيحة"))
+
+    settings = _get_settings()
+    settings["storage"] = _validate_storage_settings(storage_raw, settings.get("storage", {}))
+    settings["version"] = 3
+    _save_settings(settings)
+    return {
+        "message": "تم حفظ مسار التخزين فقط. لم يتم تعديل جدول النسخ أو سياسة الاحتفاظ أو إعدادات التطبيقات."
     }
 
 
