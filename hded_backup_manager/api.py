@@ -247,8 +247,8 @@ def _mounted_storage_locations() -> list[dict]:
             candidate = Path(os.path.normpath(raw_mount))
             if candidate.is_symlink() or not candidate.is_dir():
                 continue
+            is_run_media_mount = Path("/run/media") == candidate or Path("/run/media") in candidate.parents
             if candidate != Path("/"):
-                is_run_media_mount = Path("/run/media") == candidate or Path("/run/media") in candidate.parents
                 if not is_run_media_mount and any(candidate == Path(root) or Path(root) in candidate.parents for root in _STORAGE_HIDDEN_ROOTS):
                     continue
             try:
@@ -267,7 +267,7 @@ def _mounted_storage_locations() -> list[dict]:
             transport = str(node.get("tran") or "").lower()
             removable_raw = node.get("rm")
             removable = removable_raw is True or str(removable_raw).lower() in {"1", "true", "yes"}
-            is_external = transport == "usb" or removable
+            is_external = transport == "usb" or removable or is_run_media_mount
             if resolved == Path("/"):
                 kind_label = "قرص النظام"
             elif is_external:
