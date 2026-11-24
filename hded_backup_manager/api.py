@@ -434,11 +434,12 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
     }
     overlaps_bench = (current in bench_dir.parents or bench_dir in current.parents) and current != default_backup
     can_write = os.access(current, os.W_OK | os.X_OK)
+    is_virtualbox_share = mount.get("filesystem") == "vboxsf"
     can_select = (
         current != Path("/")
         and current not in protected_exact
         and current != Path.home().resolve()
-        and not os.path.ismount(current)
+        and (is_virtualbox_share or not os.path.ismount(current))
         and not overlaps_bench
         and can_write
     )
