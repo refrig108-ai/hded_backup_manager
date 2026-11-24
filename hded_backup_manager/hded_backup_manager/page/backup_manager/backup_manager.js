@@ -60,7 +60,6 @@ class HDEDBBackupManager {
             <nav class="backup-tabs" role="tablist" aria-label="أقسام مدير النسخ الاحتياطي">
               <button type="button" class="backup-tab-button tab-dashboard active" role="tab" aria-selected="true" aria-controls="backup-panel-dashboard" data-tab="dashboard">${this.icon("dashboard", "nav")}<span>لوحة التحكم</span></button>
               <button type="button" class="backup-tab-button tab-settings" role="tab" aria-selected="false" aria-controls="backup-panel-settings" data-tab="settings">${this.icon("settings", "nav")}<span>إعدادات النسخ</span></button>
-              <button type="button" class="backup-tab-button tab-apps" role="tab" aria-selected="false" aria-controls="backup-panel-apps" data-tab="apps">${this.icon("apps", "nav")}<span>التطبيقات</span></button>
               <button type="button" class="backup-tab-button tab-external" role="tab" aria-selected="false" aria-controls="backup-panel-external" data-tab="external">${this.icon("cloud", "nav")}<span>التخزين والربط الخارجي</span></button>
             </nav>
 
@@ -127,17 +126,6 @@ class HDEDBBackupManager {
               <div class="settings-actions"><button type="button" class="btn btn-primary" id="save-settings">حفظ جميع الإعدادات</button></div>
             </div>
 
-            <div id="backup-panel-apps" class="backup-tab-panel" data-panel="apps" role="tabpanel" hidden>
-              <section class="backup-panel">
-                <div class="panel-heading"><h3>مصادر التطبيقات</h3><span class="muted">غير مشمولة — النسخ الجديدة تحفظ قاعدة البيانات فقط</span></div>
-                <p class="muted app-auto-label">لا يتم نسخ مجلدات التطبيقات أو ملفاتها. تبقى التطبيقات المثبتة كما هي على الجهاز ولا تدخل في ملف النسخة.</p>
-                <p class="muted">عند تفعيل الاكتشاف التلقائي، يضيف النظام التطبيقات الموجودة في مجلد apps والتي تحتوي على hooks.py، بما فيها التطبيقات التي تنشئها لاحقاً. تطبيقا frappe وerpnext غير محددين افتراضياً لتقليل حجم الأرشيف؛ يمكنك تحديدهما هنا. تُستبعد المجلدات المؤقتة وبيئات Python ومجلدات Git وبعض الملفات السرية الشائعة.</p>
-                <div class="panel-heading app-list-heading"><h3>التطبيقات المكتشفة</h3><span class="muted" id="app-count">—</span></div>
-                <div id="apps-list" class="apps-list"><p class="muted">جارٍ اكتشاف التطبيقات...</p></div>
-              </section>
-              <div class="settings-actions"><button type="button" class="btn btn-primary" id="save-settings-apps">حفظ إعدادات التطبيقات</button></div>
-            </div>
-
             <div id="backup-panel-external" class="backup-tab-panel" data-panel="external" role="tabpanel" hidden>
               <section class="backup-panel">
                 <div class="panel-heading"><h3>التخزين السحابي للنسخ الكاملة</h3><span class="state-pill is-off">الربط الفعلي غير مفعّل</span></div>
@@ -179,7 +167,7 @@ class HDEDBBackupManager {
               </section>
               <div class="backup-note">مهم: إنشاء حساب بريد في ERPNext لا يعني ربط التخزين السحابي. Google Drive وOneDrive يحتاجان تفويض OAuth مستقل. Yahoo Mail مخصص للتنبيهات البريدية وليس لتخزين ملفات النسخ الكبيرة كمرفقات.</div>
             </div>
-            <p class="backup-note">ملف إعدادات الموقع الحساس لا يتاح للتنزيل من المتصفح. الاستعادة ستضاف بعد وضع آلية استعادة واختبارها.</p>
+            <p class="backup-note">الاستعادة تعيد قاعدة البيانات فقط. المرفقات والملفات الخاصة والعامة وإعدادات الموقع ومصادر التطبيقات لا تدخل في ملف النسخة.</p>
           </div>
         `);
 
@@ -192,7 +180,7 @@ class HDEDBBackupManager {
         });
         this.showTab("dashboard");
 
-        this.body.find("#save-settings, #save-settings-apps").on("click", () => this.saveSettings());
+        this.body.find("#save-settings").on("click", () => this.saveSettings());
         this.body.find("#backup-path-test").on("click", () => this.testBackupPath());
         this.body.find("#backup-path-browse").on("click", () => this.openStorageBrowser());
         this.body.find("#backup-mode").on("change", () => {
@@ -208,10 +196,11 @@ class HDEDBBackupManager {
         this.body.find(".cloud-setup-button").on("click", (event) => this.openCloudSetup($(event.currentTarget).attr("data-cloud-provider")));
         this.body.on("click", ".verify-backup", (event) => this.verify($(event.currentTarget).data("timestamp"), $(event.currentTarget).data("storage") || "active"));
         this.body.on("click", ".download-backup", (event) => this.download($(event.currentTarget).data("filename"), $(event.currentTarget).data("storage") || "active"));
+        this.body.on("click", ".restore-backup", (event) => this.startRestore($(event.currentTarget).data("timestamp"), $(event.currentTarget).data("storage") || "active"));
     }
 
     showTab(name) {
-        const allowed = ["dashboard", "settings", "apps", "external"];
+        const allowed = ["dashboard", "settings", "external"];
         if (!allowed.includes(name)) return;
 
         this.body.find(".backup-tab-button").each((_, element) => {
@@ -247,7 +236,7 @@ class HDEDBBackupManager {
     renderData(data) {
         const summary = data.summary || {}, status = data.status || {}, settings = data.settings || {};
         this.currentBackupSettings = settings;
-        const schedule = settings.schedule || {}, retention = settings.retention || {}, apps = settings.apps || {};
+        const schedule = settings.schedule || {}, retention = settings.retention || {};
         this.body.find("#backup-count").text(summary.backup_count ?? 0);
         this.body.find("#backup-complete").text(summary.complete_count ?? 0);
         this.body.find("#backup-size").text(summary.total_size || "0 B");
@@ -275,9 +264,6 @@ class HDEDBBackupManager {
         this.body.find("#retention-daily").val(retention.daily ?? 7);
         this.body.find("#retention-weekly").val(retention.weekly ?? 4);
         this.body.find("#retention-monthly").val(retention.monthly ?? 12);
-        this.body.find("#apps-archive-enabled").prop("checked", false).prop("disabled", true);
-        this.body.find("#apps-auto-include").prop("checked", false).prop("disabled", true);
-        this.renderApps(data.apps || []);
         this.renderEmailConnections(data.email_connections || {});
 
         const rows = (data.backups || []).map((item) => {
@@ -286,16 +272,11 @@ class HDEDBBackupManager {
             const storage = item.storage || "active";
             const storageLabel = storage === "active" ? '<div class="muted">المجلد المحدد حالياً</div>' : '<div class="muted">مجلد سابق</div>';
             const links = Object.entries(item.files || {}).map(([kind, filename]) => `<button type="button" class="btn btn-xs download-backup download-${kind}" data-filename="${frappe.utils.escape_html(filename)}" data-storage="${storage}">${this.icon("download", "small")} ${labels[kind] || kind}</button>`).join(" ");
-            const appState = item.apps_available ? '<span class="muted">أرشيف تطبيقات ضمن نسخة قديمة</span>' : '<span class="muted">نسخة قاعدة بيانات فقط</span>';
-            return `<tr><td>${frappe.utils.escape_html(item.created)}</td><td>${state} <span class="muted">(${item.file_count}/${item.file_total})</span><div>${appState}</div>${storageLabel}</td><td>${frappe.utils.escape_html(item.size_label)}</td><td>${links}</td><td><button type="button" class="btn btn-xs verify-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${item.complete ? "" : "disabled"}>${this.icon("shield", "small")} فحص السلامة</button></td></tr>`;
+            const appState = item.apps_available ? '<span class="muted">نسخة قديمة بها ملفات إضافية؛ الاستعادة ستعيد قاعدة البيانات فقط</span>' : '<span class="muted">نسخة قاعدة بيانات فقط</span>';
+            const canRestore = !!(item.complete && item.files && item.files.database);
+            return `<tr><td>${frappe.utils.escape_html(item.created)}</td><td>${state} <span class="muted">(${item.file_count}/${item.file_total})</span><div>${appState}</div>${storageLabel}</td><td>${frappe.utils.escape_html(item.size_label)}</td><td>${links}</td><td><div class="backup-row-actions"><button type="button" class="btn btn-xs verify-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${item.complete ? "" : "disabled"}>${this.icon("shield", "small")} فحص السلامة</button><button type="button" class="btn btn-xs btn-danger restore-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${canRestore ? "" : "disabled"}>${this.icon("refresh", "small")} استعادة قاعدة البيانات</button></div></td></tr>`;
         }).join("");
         this.body.find("#backup-rows").html(rows || '<tr><td colspan="5" class="text-center muted">لا توجد نسخ احتياطية لهذا الموقع</td></tr>');
-    }
-
-    renderApps(apps) {
-        this.body.find("#app-count").text(`${apps.length} تطبيق`);
-        const html = apps.map((app) => `<label class="app-choice"><input type="checkbox" class="app-include" value="${frappe.utils.escape_html(app.name)}" ${app.selected ? "checked" : ""} ${app.name === "hded_backup_manager" ? "disabled" : ""}><span class="app-name">${frappe.utils.escape_html(app.name)}</span><span class="muted">${app.installed ? "مضاف إلى Bench" : "مجلد موجود"}</span></label>`).join("");
-        this.body.find("#apps-list").html(html || '<p class="muted">لم يتم اكتشاف تطبيقات قابلة للأرشفة.</p>');
     }
 
     renderEmailConnections(connections) {
@@ -560,7 +541,6 @@ class HDEDBBackupManager {
     }
 
     collectSettings() {
-        const selectedApps = this.body.find(".app-include:checked").map((_, el) => $(el).val()).get();
         return {
             storage: {
                 local_path: (this.body.find("#backup-local-path").val() || "").trim(),
@@ -574,7 +554,6 @@ class HDEDBBackupManager {
                 monthly: { enabled: this.body.find("#monthly-enabled").is(":checked"), day: Number(this.body.find("#monthly-day").val() || 1), time: this.body.find("#monthly-time").val() || "02:00" },
             },
             retention: { auto_apply: this.body.find("#retention-auto").is(":checked"), daily: Number(this.body.find("#retention-daily").val()), weekly: Number(this.body.find("#retention-weekly").val()), monthly: Number(this.body.find("#retention-monthly").val()) },
-            apps: { archive_enabled: this.body.find("#apps-archive-enabled").is(":checked"), auto_include_new_apps: this.body.find("#apps-auto-include").is(":checked"), selected_apps: selectedApps },
         };
     }
 
@@ -594,7 +573,7 @@ class HDEDBBackupManager {
                 confirmAndSave(`سيتم حفظ الإعدادات وتفعيل الحذف التلقائي بعد كل نسخة ناجحة. وفق البيانات الحالية، توجد ${plan.delete_count} مجموعة نسخ مكتملة مرشحة للحذف عند تطبيق السياسة. النسخ غير المكتملة لن تُحذف. هل تريد تفعيل ذلك؟`);
             } catch (error) { this.showAlert("تعذر معاينة سياسة الاحتفاظ. لم يتم حفظ الإعدادات.", "danger"); }
         } else {
-            confirmAndSave("سيتم حفظ أوقات النسخ وسياسة الاحتفاظ وإعدادات أرشفة التطبيقات. الحذف التلقائي غير مفعّل. هل تريد المتابعة؟");
+            confirmAndSave("سيتم حفظ أوقات النسخ وسياسة الاحتفاظ. الحذف التلقائي غير مفعّل. هل تريد المتابعة؟");
         }
     }
 
@@ -664,6 +643,58 @@ class HDEDBBackupManager {
                 else this.showAlert("تعذر متابعة حالة عملية النسخ. راجع سجل خدمة hded-erp-backup.", "danger");
             }
         }, 5000);
+    }
+
+    async startRestore(timestamp, storage = "active") {
+        frappe.confirm(
+            "تحذير مهم: ستُحفظ نسخة أمان من قاعدة البيانات الحالية أولاً، ثم ستُستبدل قاعدة بيانات ERPNext بالكامل بالنسخة المختارة. ستُستعاد قاعدة البيانات فقط؛ لن تُستعاد المرفقات أو الملفات العامة والخاصة أو إعدادات الموقع أو ملفات التطبيقات. سيُمنع الوصول إلى الموقع مؤقتاً أثناء التنفيذ. هل تريد المتابعة؟",
+            async () => {
+                this.showAlert("جارٍ تجهيز الاستعادة وإنشاء نسخة أمان من قاعدة البيانات الحالية...", "info");
+                try {
+                    await this.call("start_restore", { timestamp, storage });
+                    this.pollRestore(0);
+                } catch (error) {
+                    this.showAlert("تعذر بدء الاستعادة. لم يتم تغيير قاعدة البيانات.", "danger");
+                }
+            }
+        );
+    }
+
+    pollRestore(attempt) {
+        if (this.restorePolling) return;
+        this.restorePolling = true;
+        const poll = async (count) => {
+            try {
+                const result = await this.call("get_restore_status");
+                const state = result.status || "idle";
+                if (state === "running") {
+                    this.showAlert(result.message || "عملية استعادة قاعدة البيانات قيد التنفيذ...", "info");
+                    if (count < 540) {
+                        setTimeout(() => poll(count + 1), 5000);
+                        return;
+                    }
+                    this.showAlert("ما زالت عملية الاستعادة قيد التنفيذ. حدّث الصفحة لاحقاً لمراجعة الحالة.", "warning");
+                } else if (state === "success") {
+                    this.showAlert(result.message || "اكتملت استعادة قاعدة البيانات.", "success");
+                    await this.load();
+                } else if (state === "critical") {
+                    this.showAlert(result.message || "فشلت الاستعادة ولم ينجح الرجوع إلى نسخة الأمان. أبقِ الموقع في وضع الصيانة ولا تستخدمه حتى إصلاح قاعدة البيانات.", "danger");
+                } else if (state === "failed") {
+                    this.showAlert(result.message || "فشلت الاستعادة. تم الاحتفاظ بنسخة الأمان إن كانت قد أُنشئت.", "danger");
+                } else {
+                    this.showAlert("لا توجد عملية استعادة قيد التنفيذ.", "info");
+                }
+            } catch (error) {
+                if (count < 540) {
+                    setTimeout(() => poll(count + 1), 5000);
+                    return;
+                }
+                this.showAlert("تعذر قراءة حالة الاستعادة. راجع سجل الاستعادة على الخادم.", "danger");
+            } finally {
+                this.restorePolling = false;
+            }
+        };
+        poll(attempt || 0);
     }
 
     async verify(timestamp, storage = "active") {
