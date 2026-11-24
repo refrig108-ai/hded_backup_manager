@@ -442,11 +442,14 @@ def browse_storage_directory(mount_path: str, path: str | None = None):
         and (is_virtualbox_share or not os.path.ismount(current))
         and not overlaps_bench
         and can_write
+        and not bool(mount.get("read_only", False))
     )
     return {
         "mount_path": str(resolved_root),
         "mount_label": mount["label"],
         "mount_kind": mount["kind_label"],
+        "mount_filesystem": mount.get("filesystem"),
+        "mount_read_only": bool(mount.get("read_only", False)),
         "current_path": str(current),
         "parent_path": parent,
         "can_select": can_select,
