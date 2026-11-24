@@ -15,6 +15,7 @@ from hded_backup_manager.backup_engine import (  # noqa: E402
     apply_retention,
     create_apps_archive,
     read_settings,
+    write_settings,
     prepare_backup_directory,
 )
 
@@ -35,6 +36,10 @@ def main() -> int:
     private_dir = site_path / "private"
     settings_path = private_dir / "hded_backup_manager_settings.json"
     settings = read_settings(settings_path)
+    backup_mode = settings.get("backup_mode", "scheduled")
+    if backup_mode == "one_time" and settings.get("one_time_completed_at"):
+        print("[HDED] The configured one-time backup has already completed; refusing another run.", file=sys.stderr)
+        return 5
     storage = settings.get("storage", {})
     try:
         backup_dir = prepare_backup_directory(
@@ -72,6 +77,12 @@ def main() -> int:
         print("[HDED] Applying configured retention policy", flush=True)
         result = apply_retention(backup_dir, prefix, retention)
         print(f"[HDED] Retention removed {result['deleted_count']} files; incomplete sets preserved: {result['incomplete_preserved']}", flush=True)
+
+    if backup_mode == "one_time":
+        settings["one_time_completed_at"] = __import__("datetime").datetime.now().astimezone().isoformat(timespec="seconds")
+        settings["one_time_timestamp"] = timestamp
+        write_settings(settings_path, settings)
+        print("[HDED] One-time backup marked as completed; future automatic or manual reruns are blocked.", flush=True)
 
     print("[HDED] Backup workflow completed successfully", flush=True)
     return 0
