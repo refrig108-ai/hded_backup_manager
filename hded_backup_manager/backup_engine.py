@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -28,6 +29,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "monthly": {"enabled": False, "day": 1, "time": "02:00"},
     },
     "retention": {"auto_apply": False, "daily": 7, "weekly": 4, "monthly": 12},
+    "storage": {"local_path": "", "require_mount": False},
     "apps": {
         "archive_enabled": True,
         "auto_include_new_apps": True,
@@ -53,7 +55,7 @@ def read_settings(path: Path) -> dict[str, Any]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(raw, dict):
-            for key in ("schedule", "retention", "apps"):
+            for key in ("schedule", "retention", "storage", "apps"):
                 if isinstance(raw.get(key), dict):
                     settings[key].update(raw[key])
             if "schedule_enabled" in raw:
@@ -65,6 +67,126 @@ def read_settings(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         raise RuntimeError(f"Invalid backup manager settings file: {path}")
     return settings
+
+
+def _mount_target(path: Path) -> str:
+    """Return the most specific mount target containing path."""
+    try:
+        result = subprocess.run(
+            ["findmnt", "-n", "-o", "TARGET", "-T", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+        )
+        target = result.stdout.strip()
+        return target or "/"
+    except (OSError, subprocess.SubprocessError):
+        return "/"
+
+
+def backup_directory_details(path: Path) -> dict[str, Any]:
+    path = Path(path).resolve(strict=True)
+    root_device = os.stat("/").st_dev
+    path_device = os.stat(path).st_dev
+    mount_target = _mount_target(path)
+    return {
+        "path": str(path),
+        "free_bytes": shutil.disk_usage(path).free,
+        "mount_target": mount_target,
+        "is_separate_mount": path_device != root_device and mount_target != "/",
+    }
+
+
+def prepare_backup_directory(
+    site_path: Path,
+    bench_dir: Path,
+    local_path: str | None = "",
+    require_mount: bool = False,
+    create: bool = True,
+) -> Path:
+    """
+    Validate and prepare the directory used for complete Bench backups.
+    An empty local_path preserves the historical <site>/private/backups location.
+    Custom paths must be absolute and must not overlap the Bench directory.
+    """
+    site_path = Path(site_path).resolve(strict=True)
+    bench_dir = Path(bench_dir).resolve(strict=True)
+    default_path = site_path / "private" / "backups"
+    raw = str(local_path or "").strip()
+    is_default = not raw
+    if raw:
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            raise ValueError("اكتب مساراً مطلقاً يبدأ بعلامة /")
+        candidate = Path(os.path.normpath(str(candidate)))
+        if candidate == default_path:
+            is_default = True
+    else:
+        candidate = default_path
+
+    if candidate == Path("/"):
+        raise ValueError("لا يمكن اختيار جذر النظام كمجلد للنسخ")
+    if not is_default:
+        home = Path.home().resolve()
+        if candidate == home or candidate in bench_dir.parents or bench_dir in candidate.parents:
+            raise ValueError("اختر مجلداً مخصصاً خارج مجلد Bench ومجلد المنزل نفسه")
+
+    # Refuse symlinks in the selected path or any existing parent.
+    for component in (candidate, *candidate.parents):
+        if component.is_symlink():
+            raise ValueError(f"المسار يحتوي على رابط رمزي غير مسموح: {component}")
+
+    existing = candidate
+    while not existing.exists() and existing != existing.parent:
+        existing = existing.parent
+    if not existing.is_dir() or existing.is_symlink():
+        raise ValueError("المجلد الأب للمسار المحدد غير صالح")
+
+    if require_mount:
+        details = backup_directory_details(existing)
+        if not details["is_separate_mount"]:
+            raise ValueError(
+                "تم اشتراط قرص منفصل، لكن المسار لا يقع حالياً على وحدة تخزين مركّبة منفصلة. "
+                "تحقق من توصيل القرص وتركيبه ثم أعد الفحص."
+            )
+
+    if not candidate.exists():
+        if not create:
+            raise ValueError("مجلد النسخ المحدد غير موجود")
+        candidate.mkdir(parents=True, mode=0o700, exist_ok=True)
+
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise ValueError("مسار النسخ ليس مجلداً صالحاً")
+    resolved = candidate.resolve(strict=True)
+    if resolved != candidate:
+        raise ValueError("لا يُسمح باستخدام مسار يحتوي على روابط رمزية")
+
+    if not is_default:
+        if resolved in bench_dir.parents or bench_dir in resolved.parents:
+            raise ValueError("يجب أن يكون مجلد النسخ خارج مجلد Bench بالكامل")
+
+    # Backups contain database and private files. Enforce owner-only access.
+    try:
+        os.chmod(resolved, 0o700)
+    except OSError as exc:
+        raise ValueError(f"تعذر تأمين صلاحيات مجلد النسخ (700): {exc}") from exc
+    if (os.stat(resolved).st_mode & 0o077) != 0:
+        raise ValueError("مجلد النسخ يجب ألا يكون متاحاً للمجموعة أو المستخدمين الآخرين")
+
+    if not os.access(resolved, os.W_OK | os.X_OK):
+        raise ValueError("المستخدم الذي يشغّل ERPNext لا يملك صلاحية الكتابة إلى هذا المجلد")
+
+    fd, test_name = tempfile.mkstemp(prefix=".hded-backup-write-test-", dir=resolved)
+    try:
+        os.write(fd, b"HDED Backup Manager write test")
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+        Path(test_name).unlink(missing_ok=True)
+
+    return resolved
 
 
 def discover_apps(bench_dir: Path) -> list[dict[str, Any]]:
