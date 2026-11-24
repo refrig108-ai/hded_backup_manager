@@ -470,7 +470,7 @@ class HDEDBBackupManager {
                     <span class="storage-volume-arrow">فتح المجلدات ←</span>
                 </button>`;
             }).join("");
-            container.html(`<div class="storage-browser-intro">اختر القرص الذي تريد حفظ النسخ عليه. هذه الأقراص موجودة على خادم Ubuntu الذي يعمل عليه ERPNext، وليست أقراص جهاز Windows أو الهاتف.</div><div class="storage-volume-list">${cards}</div>`);
+            container.html(`<div class="storage-browser-intro">اختر القرص الذي تريد حفظ النسخ عليه. هذه الأقراص موجودة على خادم Ubuntu داخل VirtualBox، وليست أقراص Windows أو الهاتف. تظهر وحدات التخزين المركّبة فقط؛ القرص غير المركّب يجب تركيبه في Ubuntu أولاً.</div><div class="storage-volume-list">${cards}</div>`);
         } catch (error) {
             container.html('<div class="alert alert-danger">تعذر قراءة الأقراص. تحقق من صلاحيات نظام التشغيل وسجل Frappe.</div>');
         }
