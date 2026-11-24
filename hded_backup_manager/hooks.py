@@ -1,10 +1,10 @@
 app_name = "hded_backup_manager"
 app_title = "HDED Backup Manager"
 app_publisher = "HDED"
-app_description = "Browser-based backup management for HDED ERPNext"
+app_description = "Database-only backup and restore management for HDED ERPNext"
 app_email = ""
 app_license = "MIT"
-app_version = "0.2.3"
+app_version = "0.3.0"
 
 add_to_apps_screen = [
     {
