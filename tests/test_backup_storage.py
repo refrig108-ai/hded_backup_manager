@@ -6,7 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hded_backup_manager.backup_engine import (\n    DEFAULT_SETTINGS,\n    prepare_backup_directory,\n    read_settings,\n    write_settings,\n)
+from hded_backup_manager.backup_engine import (
+    DEFAULT_SETTINGS,
+    prepare_backup_directory,
+    read_settings,
+    write_settings,
+)
 
 
 class BackupDirectoryTests(unittest.TestCase):
