@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hded_backup_manager.backup_engine import prepare_backup_directory
+from hded_backup_manager.backup_engine import (\n    DEFAULT_SETTINGS,\n    prepare_backup_directory,\n    read_settings,\n    write_settings,\n)
 
 
 class BackupDirectoryTests(unittest.TestCase):
@@ -66,6 +66,26 @@ class BackupDirectoryTests(unittest.TestCase):
         target = self.root / "not-a-separate-volume"
         with self.assertRaises(ValueError):
             self.prepare(str(target), require_mount=True)
+
+    def test_backup_mode_defaults_to_scheduled(self) -> None:
+        path = self.site / "private" / "hded_backup_manager_settings.json"
+        settings = read_settings(path)
+        self.assertEqual(settings["backup_mode"], "scheduled")
+        self.assertIsNone(settings["one_time_completed_at"])
+
+    def test_one_time_completion_is_saved_with_private_permissions(self) -> None:
+        path = self.site / "private" / "hded_backup_manager_settings.json"
+        settings = dict(DEFAULT_SETTINGS)
+        settings.update({
+            "backup_mode": "one_time",
+            "one_time_completed_at": "2026-11-24T21:00:00+03:00",
+            "one_time_timestamp": "20261124_210000",
+        })
+        write_settings(path, settings)
+        loaded = read_settings(path)
+        self.assertEqual(loaded["backup_mode"], "one_time")
+        self.assertEqual(loaded["one_time_timestamp"], "20261124_210000")
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
 
 if __name__ == "__main__":
