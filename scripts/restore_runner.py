@@ -72,6 +72,18 @@ def main() -> int:
         write_status(status_file, "failed", f"ملف النسخة المضغوط تالف: {str(exc)[:200]}")
         return 2
 
+    import frappe
+    frappe.init(site=site, sites_path=str(BENCH_DIR / "sites"))
+    try:
+        from frappe.installer import is_downgrade, is_partial, validate_database_sql
+        if is_partial(str(backup_file)):
+            raise RuntimeError("Partial database backups cannot restore a full site.")
+        if is_downgrade(str(backup_file), verbose=True):
+            raise RuntimeError("Backup is from a newer Frappe version; restore was stopped.")
+        validate_database_sql(str(backup_file), _raise=True)
+    finally:
+        frappe.destroy()
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safety_dir = site_path / "private" / "restore_safety" / timestamp
     safety_dir.mkdir(parents=True, mode=0o700, exist_ok=False)
