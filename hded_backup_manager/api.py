@@ -534,7 +534,7 @@ def _dashboard_backups(settings: dict | None = None) -> list[dict]:
                 "created": row["created"],
                 "complete": row["complete"],
                 "file_count": len(row["files"]),
-                "file_total": 1 if set(row["files"]) == {"database.sql.gz"} else (5 if row["apps_available"] else 4),
+                "file_total": 1 if set(files) == {"database"} else (5 if row["apps_available"] else 4),
                 "apps_available": row["apps_available"],
                 "total_size": row["total_size"],
                 "size_label": _format_size(row["total_size"]),
