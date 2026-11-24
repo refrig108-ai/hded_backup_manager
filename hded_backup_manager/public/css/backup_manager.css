@@ -317,3 +317,34 @@
     line-height: 1;
     letter-spacing: -0.5px;
 }
+
+
+/* Local backup storage configuration (v0.3.0) */
+.local-storage-panel .local-storage-fields {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr);
+    gap: 14px;
+}
+.local-storage-panel .local-storage-fields > div {
+    max-width: 760px;
+}
+.local-storage-panel input[type="text"] {
+    direction: ltr;
+    text-align: left;
+}
+.local-storage-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 14px;
+}
+#backup-path-status {
+    overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+    .local-storage-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
