@@ -200,7 +200,7 @@ def prepare_backup_directory(
         existing = existing.parent
     if not existing.is_dir() or existing.is_symlink():
         raise ValueError("المجلد الأب للمسار المحدد غير صالح")
-    if candidate.exists() and os.path.ismount(candidate):
+    if candidate.exists() and os.path.ismount(candidate) and _filesystem_type(candidate) != "vboxsf":
         raise ValueError("هذا هو جذر القرص المركّب. اختر مجلداً فرعياً داخله مثل /mnt/backup/hded")
 
     if require_mount:
