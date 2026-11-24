@@ -99,6 +99,22 @@ def write_settings(path: Path, settings: dict[str, Any]) -> None:
         raise
 
 
+def _filesystem_type(path: Path) -> str:
+    """Return the filesystem type that backs path, if findmnt is available."""
+    try:
+        result = subprocess.run(
+            ["findmnt", "-n", "-o", "FSTYPE", "-T", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+        )
+        return result.stdout.strip().lower()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def _mount_target(path: Path) -> str:
     """Return the most specific mount target containing path."""
     try:
@@ -208,13 +224,24 @@ def prepare_backup_directory(
         if resolved in bench_dir.parents or bench_dir in resolved.parents:
             raise ValueError("يجب أن يكون مجلد النسخ خارج مجلد Bench بالكامل")
 
-    # Backups contain database and private files. Enforce owner-only access.
-    try:
-        os.chmod(resolved, 0o700)
-    except OSError as exc:
-        raise ValueError(f"تعذر تأمين صلاحيات مجلد النسخ (700): {exc}") from exc
-    if (os.stat(resolved).st_mode & 0o077) != 0:
-        raise ValueError("مجلد النسخ يجب ألا يكون متاحاً للمجموعة أو المستخدمين الآخرين")
+    # Backups contain database and private files. Normal Linux folders are
+    # made owner-only. VirtualBox vboxsf shares inherit access from mount
+    # options and the vboxsf group, so do not chmod the host folder from the guest.
+    filesystem_type = _filesystem_type(resolved)
+    current_mode = os.stat(resolved).st_mode & 0o777
+    if filesystem_type == "vboxsf":
+        if current_mode & 0o007:
+            raise ValueError(
+                "مشاركة Windows تسمح بالوصول للمستخدمين الآخرين. "
+                "أعد تركيبها بخيارات صلاحيات تمنع صلاحيات Other، ثم أعد الفحص."
+            )
+    else:
+        try:
+            os.chmod(resolved, 0o700)
+        except OSError as exc:
+            raise ValueError(f"تعذر تأمين صلاحيات مجلد النسخ (700): {exc}") from exc
+        if (os.stat(resolved).st_mode & 0o077) != 0:
+            raise ValueError("مجلد النسخ يجب ألا يكون متاحاً للمجموعة أو المستخدمين الآخرين")
 
     if not os.access(resolved, os.W_OK | os.X_OK):
         raise ValueError("المستخدم الذي يشغّل ERPNext لا يملك صلاحية الكتابة إلى هذا المجلد")
