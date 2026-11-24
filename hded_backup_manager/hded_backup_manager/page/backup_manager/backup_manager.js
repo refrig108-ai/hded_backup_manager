@@ -84,15 +84,24 @@ class HDEDBBackupManager {
                 <div class="panel-heading"><h3>مكان حفظ النسخ الاحتياطية</h3><span class="muted">التخزين المحلي</span></div>
                 <p class="muted">اكتب المسار الكامل لمجلد على خادم Ubuntu. اتركه فارغاً لاستخدام مجلد الموقع الافتراضي. يمكن اختيار مجلد على قرص داخلي أو قرص خارجي موصول بالخادم.</p>
                 <div class="local-storage-fields">
-                  <div><label for="backup-local-path">مسار مجلد النسخ</label><input type="text" id="backup-local-path" class="form-control" dir="ltr" placeholder="/mnt/backup/hded"></div>
+                  <div><label for="backup-local-path">مسار مجلد النسخ</label><div class="backup-path-row"><input type="text" id="backup-local-path" class="form-control" dir="ltr" placeholder="/mnt/backup/hded"><button type="button" class="btn btn-default" id="backup-path-browse">${this.icon("folder")} استعراض الأقراص والمجلدات</button></div></div>
                   <label class="switch-label"><input type="checkbox" id="backup-require-mount"> اشترط أن يكون المجلد على قرص/وحدة تخزين منفصلة موصولة</label>
                 </div>
                 <div class="local-storage-actions"><button type="button" class="btn btn-default" id="backup-path-test">${this.icon("shield")} فحص المسار وإمكانية الكتابة</button><button type="button" class="btn btn-primary" id="backup-storage-save">حفظ مسار التخزين فقط</button><span id="backup-path-status" class="muted" aria-live="polite"></span></div>
                 <p class="muted">هذا مسار على خادم Ubuntu وليس على جهاز المتصفح. الفحص ينشئ المجلد عند الحاجة ويتأكد من صلاحيات الحماية والمساحة المتاحة. عند تغيير المسار لا تُنقل النسخ القديمة أو تُحذف؛ يحتفظ التطبيق بسجل لمسارات التخزين السابقة ويعرض نسخها كمجلد سابق.</p>
               </section>
-              <section class="backup-panel">
-                <div class="panel-heading"><h3>جدولة النسخ الاحتياطي</h3><label class="switch-label"><input type="checkbox" id="schedule-enabled"> تفعيل الجدولة</label></div>
-                <p class="muted">يمكن تشغيل أكثر من جدول في الوقت نفسه؛ ينفذ النظام النسخ في كل موعد محدد.</p>
+              <section class="backup-panel backup-mode-panel">
+                <div class="panel-heading"><h3>نمط الحفظ</h3><span class="muted">اختر طريقة تكرار النسخ</span></div>
+                <label for="backup-mode">طريقة إنشاء النسخ الاحتياطية</label>
+                <select id="backup-mode" class="form-control">
+                  <option value="scheduled">نسخ دوري تلقائي إلى نفس المجلد</option>
+                  <option value="one_time">نسخة واحدة فقط — يدويًا دون تكرار تلقائي</option>
+                </select>
+                <p class="muted" id="backup-mode-note">سيتم إنشاء النسخ تلقائيًا حسب المواعيد المحددة أدناه، مع حفظها في مجلد التخزين المختار.</p>
+              </section>
+              <section class="backup-panel" id="schedule-controls">
+                <div class="panel-heading"><h3>مواعيد النسخ الدوري</h3></div>
+                <p class="muted">يمكن تفعيل أكثر من موعد. عند اختيار «نسخة واحدة فقط» يتم إيقاف هذه المواعيد، وتُنشأ نسخة واحدة عند الضغط على زر «إنشاء نسخة الآن».</p>
                 <div class="schedule-grid">
                   <div class="schedule-option"><label class="switch-label"><input type="checkbox" id="daily-enabled"> نسخ يومي</label><label for="daily-time">الساعة</label><input type="time" id="daily-time" class="form-control" value="02:00"></div>
                   <div class="schedule-option"><label class="switch-label"><input type="checkbox" id="weekly-enabled"> نسخ أسبوعي</label><label for="weekly-day">يوم التنفيذ</label><select id="weekly-day" class="form-control"><option value="Mon">الاثنين</option><option value="Tue">الثلاثاء</option><option value="Wed">الأربعاء</option><option value="Thu">الخميس</option><option value="Fri">الجمعة</option><option value="Sat">السبت</option><option value="Sun">الأحد</option></select><label for="weekly-time">الساعة</label><input type="time" id="weekly-time" class="form-control" value="02:00"></div>
@@ -180,6 +189,8 @@ class HDEDBBackupManager {
 
         this.body.find("#save-settings, #save-settings-apps").on("click", () => this.saveSettings());
         this.body.find("#backup-path-test").on("click", () => this.testBackupPath());
+        this.body.find("#backup-path-browse").on("click", () => this.openStorageBrowser());
+        this.body.find("#backup-mode").on("change", () => this.updateBackupModeUI(this.body.find("#backup-mode").val()));
         this.body.find("#backup-storage-save").on("click", () => this.saveStorageSettings());
         this.body.find("#preview-retention").on("click", () => this.previewRetention());
         this.body.find("#apply-retention").on("click", () => this.applyRetention());
@@ -238,7 +249,13 @@ class HDEDBBackupManager {
         this.body.find("#timer-state").text(status.timer_active ? "الجدولة مفعّلة" : "الجدولة متوقفة").toggleClass("is-on", !!status.timer_active).toggleClass("is-off", !status.timer_active);
         this.body.find("#schedule-info").text(`موعد التنفيذ القادم: ${status.next_run || "غير متاح"} — آخر نتيجة للخدمة: ${status.service_result || "غير متاح"}`);
 
-        this.body.find("#schedule-enabled").prop("checked", !!settings.schedule_enabled);
+        this.body.find("#backup-mode").val(settings.backup_mode || "scheduled");
+        this.updateBackupModeUI(settings.backup_mode || "scheduled", settings);
+        if ((settings.backup_mode || "scheduled") === "one_time" && settings.one_time_completed_at) {
+            this.page.set_primary_action("اكتملت النسخة الواحدة", () => frappe.msgprint("تم تنفيذ النسخة المحددة لمرة واحدة بالفعل. لن يبدأ النظام نسخة أخرى حتى تغيّر نمط الحفظ وتحفظ الإعدادات من جديد."), "check");
+        } else {
+            this.page.set_primary_action("إنشاء نسخة الآن", () => this.startBackup(), "database");
+        }
         this.body.find("#daily-enabled").prop("checked", !!(schedule.daily || {}).enabled);
         this.body.find("#daily-time").val((schedule.daily || {}).time || "02:00");
         this.body.find("#weekly-enabled").prop("checked", !!(schedule.weekly || {}).enabled);
@@ -356,6 +373,117 @@ class HDEDBBackupManager {
         dialog.show();
     }
 
+    updateBackupModeUI(mode, settings = {}) {
+        const oneTime = mode === "one_time";
+        this.body.find("#schedule-controls :input").prop("disabled", oneTime);
+        this.body.find("#schedule-controls").toggleClass("backup-schedule-disabled", oneTime);
+        let note = "سيتم إنشاء النسخ تلقائيًا حسب المواعيد المحددة أدناه، مع حفظها في مجلد التخزين المختار.";
+        if (oneTime && settings.one_time_completed_at) {
+            note = `اكتملت النسخة الواحدة بتاريخ ${settings.one_time_completed_at}. تم منع أي تشغيل جديد لهذا النمط.`;
+        } else if (oneTime) {
+            note = "لن يعمل النسخ تلقائيًا ولن يتكرر. بعد حفظ الإعدادات، اضغط «إنشاء نسخة الآن» لإنشاء نسخة واحدة فقط. بعد نجاحها سيمنع النظام تكرارها بهذا النمط.";
+        }
+        this.body.find("#backup-mode-note").text(note);
+    }
+
+    async openStorageBrowser() {
+        const dialog = new frappe.ui.Dialog({
+            title: "استعراض أقراص ومجلدات خادم Ubuntu",
+            fields: [{ fieldtype: "HTML", fieldname: "storage_browser" }],
+            primary_action_label: "إغلاق",
+            primary_action: () => dialog.hide(),
+        });
+        dialog.show();
+        const container = dialog.fields_dict.storage_browser.$wrapper;
+        container.html('<div class="storage-browser-loading">جارٍ اكتشاف الأقراص ووحدات التخزين المركّبة...</div>');
+
+        container.off("click.hdedStorageBrowser")
+            .on("click.hdedStorageBrowser", ".storage-volume-open", async (event) => {
+                const button = $(event.currentTarget);
+                await this.browseStorageFolder(dialog, container, button.attr("data-mount"), button.attr("data-path"));
+            })
+            .on("click.hdedStorageBrowser", ".storage-folder-open", async (event) => {
+                const button = $(event.currentTarget);
+                await this.browseStorageFolder(dialog, container, button.attr("data-mount"), button.attr("data-path"));
+            })
+            .on("click.hdedStorageBrowser", ".storage-folder-up", async (event) => {
+                const button = $(event.currentTarget);
+                await this.browseStorageFolder(dialog, container, button.attr("data-mount"), button.attr("data-path"));
+            })
+            .on("click.hdedStorageBrowser", ".storage-back-volumes", () => this.loadStorageVolumes(dialog, container))
+            .on("click.hdedStorageBrowser", ".storage-folder-choose", (event) => {
+                const button = $(event.currentTarget);
+                const path = button.attr("data-path");
+                const mountPath = button.attr("data-mount");
+                this.body.find("#backup-local-path").val(path);
+                this.body.find("#backup-require-mount").prop("checked", mountPath !== "/");
+                this.body.find("#backup-path-status").text("تم اختيار المجلد. نفّذ الفحص ثم احفظ المسار.").removeClass("text-danger").addClass("text-success");
+                dialog.hide();
+                this.showAlert(`تم اختيار مجلد التخزين: ${path}. افحص المسار ثم احفظه.`, "success");
+            });
+
+        await this.loadStorageVolumes(dialog, container);
+    }
+
+    async loadStorageVolumes(dialog, container) {
+        container.html('<div class="storage-browser-loading">جارٍ قراءة الأقراص المركّبة...</div>');
+        try {
+            const result = await this.call("get_storage_locations");
+            const locations = result.locations || [];
+            if (!locations.length) {
+                container.html('<div class="alert alert-warning">لم يتم العثور على أقراص محلية مركّبة يمكن استعراضها.</div>');
+                return;
+            }
+            const cards = locations.map((item) => {
+                const path = frappe.utils.escape_html(item.path);
+                const label = frappe.utils.escape_html(item.label);
+                const kind = frappe.utils.escape_html(item.kind_label);
+                const size = frappe.utils.escape_html(item.size || "غير معروف");
+                const free = this.formatBytes(item.free_bytes);
+                return `<button type="button" class="storage-volume-open" data-mount="${path}" data-path="${path}">
+                    <span class="storage-volume-icon">${this.icon("database", "small")}</span>
+                    <span class="storage-volume-info"><strong>${label}</strong><small>${kind} · ${size} · المتاح ${free}</small><code>${path}</code></span>
+                    <span class="storage-volume-arrow">فتح المجلدات ←</span>
+                </button>`;
+            }).join("");
+            container.html(`<div class="storage-browser-intro">اختر القرص الذي تريد حفظ النسخ عليه. هذه الأقراص موجودة على خادم Ubuntu الذي يعمل عليه ERPNext، وليست أقراص جهاز Windows أو الهاتف.</div><div class="storage-volume-list">${cards}</div>`);
+        } catch (error) {
+            container.html('<div class="alert alert-danger">تعذر قراءة الأقراص. تحقق من صلاحيات نظام التشغيل وسجل Frappe.</div>');
+        }
+    }
+
+    async browseStorageFolder(dialog, container, mountPath, path) {
+        container.find(".storage-browser-loading, .storage-browser-error").remove();
+        container.prepend('<div class="storage-browser-loading">جارٍ قراءة المجلد...</div>');
+        try {
+            const result = await this.call("browse_storage_directory", { mount_path: mountPath, path });
+            const current = frappe.utils.escape_html(result.current_path);
+            const mount = frappe.utils.escape_html(result.mount_path);
+            const kind = frappe.utils.escape_html(result.mount_kind || "");
+            const parent = result.parent_path ? `<button type="button" class="btn btn-default storage-folder-up" data-mount="${mount}" data-path="${frappe.utils.escape_html(result.parent_path)}">${this.icon("folder", "small")} رجوع إلى المجلد الأعلى</button>` : "";
+            const folders = (result.directories || []).map((item) => {
+                const name = frappe.utils.escape_html(item.name);
+                const child = frappe.utils.escape_html(item.path);
+                return `<button type="button" class="storage-folder-open" data-mount="${mount}" data-path="${child}">${this.icon("folder", "small")} <span>${name}</span><span class="storage-folder-open-label">فتح</span></button>`;
+            }).join("");
+            const choose = result.can_select
+                ? `<button type="button" class="btn btn-primary storage-folder-choose" data-mount="${mount}" data-path="${current}">اختيار هذا المجلد للحفظ</button>`
+                : '<span class="muted">اختر مجلدًا فرعيًا داخل القرص؛ لا يمكن حفظ النسخ في جذر القرص مباشرة.</span>';
+            container.html(`<div class="storage-browser-toolbar"><button type="button" class="btn btn-default storage-back-volumes">${this.icon("database", "small")} الأقراص</button>${parent}<span class="storage-browser-kind">${kind}</span></div><div class="storage-browser-current"><small>المسار الحالي</small><code dir="ltr">${current}</code><small>المساحة المتاحة: ${this.formatBytes(result.free_bytes)}</small></div><div class="storage-folder-list">${folders || '<p class="muted">لا توجد مجلدات فرعية ظاهرة داخل هذا المجلد.</p>'}</div><div class="storage-browser-select">${choose}</div>`);
+        } catch (error) {
+            container.html('<div class="alert alert-danger storage-browser-error">تعذر استعراض هذا المجلد. قد تكون الوحدة مفصولة أو لا توجد صلاحية قراءة.</div><button type="button" class="btn btn-default storage-back-volumes">العودة إلى الأقراص</button>');
+        }
+    }
+
+    formatBytes(bytes) {
+        let value = Number(bytes || 0);
+        if (!Number.isFinite(value) || value < 0) return "غير متاحة";
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let index = 0;
+        while (value >= 1024 && index < units.length - 1) { value /= 1024; index++; }
+        return `${value.toFixed(index ? 1 : 0)} ${units[index]}`;
+    }
+
     async testBackupPath() {
         const path = (this.body.find("#backup-local-path").val() || "").trim();
         const require_mount = this.body.find("#backup-require-mount").is(":checked");
@@ -402,7 +530,8 @@ class HDEDBBackupManager {
                 local_path: (this.body.find("#backup-local-path").val() || "").trim(),
                 require_mount: this.body.find("#backup-require-mount").is(":checked"),
             },
-            schedule_enabled: this.body.find("#schedule-enabled").is(":checked"),
+            backup_mode: this.body.find("#backup-mode").val() || "scheduled",
+            schedule_enabled: (this.body.find("#backup-mode").val() || "scheduled") === "scheduled",
             schedule: {
                 daily: { enabled: this.body.find("#daily-enabled").is(":checked"), time: this.body.find("#daily-time").val() || "02:00" },
                 weekly: { enabled: this.body.find("#weekly-enabled").is(":checked"), weekday: this.body.find("#weekly-day").val(), time: this.body.find("#weekly-time").val() || "02:00" },
