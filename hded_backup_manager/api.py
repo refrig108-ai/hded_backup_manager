@@ -374,6 +374,8 @@ def _validate_settings(raw: dict) -> dict:
         frappe.throw(_("صيغة الإعدادات غير صحيحة"))
 
     storage_raw = raw.get("storage") or current.get("storage") or {}
+    if not isinstance(storage_raw, dict):
+        frappe.throw(_("إعدادات التخزين المحلي غير صحيحة"))
     local_path = str(storage_raw.get("local_path") or "").strip()
     require_mount_raw = storage_raw.get("require_mount", False)
     require_mount = require_mount_raw if isinstance(require_mount_raw, bool) else str(require_mount_raw).strip().lower() in {"1", "true", "yes", "on"}
