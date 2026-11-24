@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -79,10 +80,14 @@ def main() -> int:
         print(f"[HDED] Retention removed {result['deleted_count']} files; incomplete sets preserved: {result['incomplete_preserved']}", flush=True)
 
     if backup_mode == "one_time":
-        settings["one_time_completed_at"] = __import__("datetime").datetime.now().astimezone().isoformat(timespec="seconds")
-        settings["one_time_timestamp"] = timestamp
-        write_settings(settings_path, settings)
-        print("[HDED] One-time backup marked as completed; future automatic or manual reruns are blocked.", flush=True)
+        # Re-read the settings before marking completion so a concurrent settings
+        # save is never overwritten with the stale in-memory settings from startup.
+        latest_settings = read_settings(settings_path)
+        if latest_settings.get("backup_mode") == "one_time":
+            latest_settings["one_time_completed_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+            latest_settings["one_time_timestamp"] = timestamp
+            write_settings(settings_path, latest_settings)
+            print("[HDED] One-time backup marked as completed; future automatic or manual reruns are blocked.", flush=True)
 
     print("[HDED] Backup workflow completed successfully", flush=True)
     return 0
