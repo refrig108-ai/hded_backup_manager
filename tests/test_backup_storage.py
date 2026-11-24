@@ -90,6 +90,20 @@ class BackupDirectoryTests(unittest.TestCase):
         chmod.assert_not_called()
         self.assertTrue(os.access(result, os.W_OK | os.X_OK))
 
+    def test_virtualbox_shared_folder_mount_root_can_be_selected(self) -> None:
+        target = self.root / "windows-share"
+        target.mkdir()
+        with patch(
+            "hded_backup_manager.backup_engine._filesystem_type",
+            return_value="vboxsf",
+        ), patch(
+            "hded_backup_manager.backup_engine.os.path.ismount",
+            return_value=True,
+        ), patch("hded_backup_manager.backup_engine.os.chmod") as chmod:
+            result = self.prepare(str(target))
+        self.assertEqual(result, target)
+        chmod.assert_not_called()
+
     def test_one_time_completion_is_saved_with_private_permissions(self) -> None:
         path = self.site / "private" / "hded_backup_manager_settings.json"
         path.parent.mkdir(parents=True, exist_ok=True)
