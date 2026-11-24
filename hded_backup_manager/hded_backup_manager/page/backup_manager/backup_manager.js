@@ -229,7 +229,8 @@ class HDEDBBackupManager {
         this.body.find("#backup-complete").text(summary.complete_count ?? 0);
         this.body.find("#backup-size").text(summary.total_size || "0 B");
         this.body.find("#backup-latest").text(summary.latest || "لا توجد نسخ بعد");
-        this.body.find("#backup-directory").text(`مجلد التخزين الحالي: ${summary.directory || "غير متاح"} — المساحة المتاحة: ${summary.free_space || "غير متاحة"}`);
+        const storageWarning = summary.storage_error ? ` — تنبيه: ${summary.storage_error}` : "";
+        this.body.find("#backup-directory").text(`مجلد التخزين الحالي: ${summary.directory || "غير متاح"} — المساحة المتاحة: ${summary.free_space || "غير متاحة"}${storageWarning}`).toggleClass("text-danger", !!summary.storage_error);
         this.body.find("#backup-local-path").val((settings.storage || {}).local_path || "");
         this.body.find("#backup-require-mount").prop("checked", !!(settings.storage || {}).require_mount);
         this.body.find("#timer-state").text(status.timer_active ? "الجدولة مفعّلة" : "الجدولة متوقفة").toggleClass("is-on", !!status.timer_active).toggleClass("is-off", !status.timer_active);
@@ -257,7 +258,7 @@ class HDEDBBackupManager {
             const state = item.complete ? '<span class="state-pill is-on">مكتملة</span>' : '<span class="state-pill is-off">غير مكتملة</span>';
             const labels = { database: "قاعدة البيانات", public: "الملفات العامة", private: "الملفات الخاصة", apps: "مصادر التطبيقات" };
             const storage = item.storage || "active";
-            const storageLabel = storage === "previous" ? '<div class="muted">المجلد السابق</div>' : '<div class="muted">المجلد المحدد حالياً</div>';
+            const storageLabel = storage === "active" ? '<div class="muted">المجلد المحدد حالياً</div>' : '<div class="muted">مجلد سابق</div>';
             const links = Object.entries(item.files || {}).map(([kind, filename]) => `<button type="button" class="btn btn-xs download-backup download-${kind}" data-filename="${frappe.utils.escape_html(filename)}" data-storage="${storage}">${this.icon("download", "small")} ${labels[kind] || kind}</button>`).join(" ");
             const appState = item.apps_available ? '<span class="muted">أرشيف التطبيقات محفوظ</span>' : '<span class="muted">لا يوجد أرشيف تطبيقات</span>';
             return `<tr><td>${frappe.utils.escape_html(item.created)}</td><td>${state} <span class="muted">(${item.file_count}/${item.file_total})</span><div>${appState}</div>${storageLabel}</td><td>${frappe.utils.escape_html(item.size_label)}</td><td>${links}</td><td><button type="button" class="btn btn-xs verify-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${item.complete ? "" : "disabled"}>${this.icon("shield", "small")} فحص السلامة</button></td></tr>`;
