@@ -230,7 +230,8 @@ class HDEDBBackupManager {
         this.body.find("#backup-size").text(summary.total_size || "0 B");
         this.body.find("#backup-latest").text(summary.latest || "لا توجد نسخ بعد");
         const storageWarning = summary.storage_error ? ` — تنبيه: ${summary.storage_error}` : "";
-        this.body.find("#backup-directory").text(`مجلد التخزين الحالي: ${summary.directory || "غير متاح"} — المساحة المتاحة: ${summary.free_space || "غير متاحة"}${storageWarning}`).toggleClass("text-danger", !!summary.storage_error);
+        const diskLabel = summary.storage_error ? "القرص غير متاح" : summary.is_separate_mount ? "وحدة تخزين منفصلة" : "القرص المحلي";
+        this.body.find("#backup-directory").text(`مجلد التخزين الحالي: ${summary.directory || "غير متاح"} — ${diskLabel} — المساحة المتاحة: ${summary.free_space || "غير متاحة"}${storageWarning}`).toggleClass("text-danger", !!summary.storage_error);
         this.body.find("#backup-local-path").val((settings.storage || {}).local_path || "");
         this.body.find("#backup-require-mount").prop("checked", !!(settings.storage || {}).require_mount);
         this.body.find("#timer-state").text(status.timer_active ? "الجدولة مفعّلة" : "الجدولة متوقفة").toggleClass("is-on", !!status.timer_active).toggleClass("is-off", !status.timer_active);
