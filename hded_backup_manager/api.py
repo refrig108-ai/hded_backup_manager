@@ -297,6 +297,57 @@ def _mounted_storage_locations() -> list[dict]:
         if isinstance(device, dict):
             visit(device)
 
+    # VirtualBox shared folders expose Windows host directories through the
+    # vboxsf filesystem. They are not block devices, so lsblk cannot list them.
+    try:
+        shared_proc = subprocess.run(
+            ["findmnt", "--json", "--types", "vboxsf", "--output", "SOURCE,TARGET,FSTYPE,OPTIONS"],
+            check=False, capture_output=True, text=True, timeout=8,
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+        )
+        if shared_proc.returncode == 0 and shared_proc.stdout.strip():
+            shared_payload = json.loads(shared_proc.stdout)
+            for shared in shared_payload.get("filesystems") or []:
+                raw_target = shared.get("target")
+                if not isinstance(raw_target, str) or not raw_target.startswith("/"):
+                    continue
+                target = Path(os.path.normpath(raw_target))
+                if target.is_symlink() or not target.is_dir():
+                    continue
+                try:
+                    resolved = target.resolve(strict=True)
+                    if resolved != target or not resolved.is_dir():
+                        continue
+                    key = str(resolved)
+                    if key in seen:
+                        continue
+                    free_bytes = shutil.disk_usage(resolved).free
+                    stat_result = os.stat(resolved)
+                except OSError:
+                    continue
+
+                seen.add(key)
+                source = str(shared.get("source") or "VirtualBox Shared Folder")
+                share_name = source.rsplit("[", 1)[0].strip() or source
+                options = str(shared.get("options") or "")
+                read_only = "ro" in {part.strip() for part in options.split(",")}
+                locations.append({
+                    "path": str(resolved),
+                    "label": share_name,
+                    "kind_label": "مجلد Windows مشترك عبر VirtualBox",
+                    "device": source,
+                    "transport": "virtualbox",
+                    "removable": False,
+                    "size": "مجلد مشترك",
+                    "filesystem": "vboxsf",
+                    "free_bytes": free_bytes,
+                    "is_separate_mount": stat_result.st_dev != root_device or True,
+                    "read_only": read_only,
+                })
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        # A guest without VirtualBox Guest Additions simply has no vboxsf entry.
+        pass
+
     return sorted(locations, key=lambda item: (item["path"] != "/", item["path"].casefold()))
 
 
