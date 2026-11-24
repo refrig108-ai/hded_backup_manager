@@ -208,6 +208,178 @@ def _format_size(size: int) -> str:
     return f"{value:.1f} TB"
 
 
+
+_STORAGE_HIDDEN_ROOTS = {
+    "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc",
+    "/root", "/run", "/sbin", "/sys", "/tmp", "/usr", "/var", "/opt",
+}
+
+
+def _mounted_storage_locations() -> list[dict]:
+    """List mounted local block-device filesystems for the server-side folder picker."""
+    command = [
+        "lsblk", "--json", "--paths",
+        "--output", "NAME,TYPE,TRAN,RM,SIZE,FSTYPE,LABEL,MOUNTPOINTS",
+    ]
+    try:
+        proc = subprocess.run(
+            command, check=True, capture_output=True, text=True, timeout=10,
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+        )
+        payload = json.loads(proc.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        frappe.throw(_("تعذر قراءة وحدات التخزين المركّبة على الخادم: {0}").format(str(exc)[:250]))
+
+    root_device = os.stat("/").st_dev
+    seen: set[str] = set()
+    locations: list[dict] = []
+
+    def visit(node: dict) -> None:
+        mountpoints = node.get("mountpoints")
+        if not isinstance(mountpoints, list):
+            mountpoint = node.get("mountpoint")
+            mountpoints = [mountpoint] if mountpoint else []
+
+        for raw_mount in mountpoints:
+            if not isinstance(raw_mount, str) or not raw_mount.startswith("/"):
+                continue
+            candidate = Path(os.path.normpath(raw_mount))
+            if candidate.is_symlink() or not candidate.is_dir():
+                continue
+            if candidate != Path("/"):
+                if any(candidate == Path(root) or Path(root) in candidate.parents for root in _STORAGE_HIDDEN_ROOTS):
+                    continue
+            try:
+                resolved = candidate.resolve(strict=True)
+                if resolved != candidate or not resolved.is_dir():
+                    continue
+                key = str(resolved)
+                if key in seen:
+                    continue
+                stat_result = os.stat(resolved)
+                free_bytes = __import__("shutil").disk_usage(resolved).free
+            except OSError:
+                continue
+
+            seen.add(key)
+            transport = str(node.get("tran") or "").lower()
+            removable_raw = node.get("rm")
+            removable = removable_raw is True or str(removable_raw).lower() in {"1", "true", "yes"}
+            is_external = transport == "usb" or removable
+            if resolved == Path("/"):
+                kind_label = "قرص النظام"
+            elif is_external:
+                kind_label = "قرص خارجي"
+            else:
+                kind_label = "قرص داخلي أو وحدة تخزين"
+
+            label = str(node.get("label") or node.get("name") or resolved.name or "وحدة تخزين")
+            locations.append({
+                "path": str(resolved),
+                "label": label,
+                "kind_label": kind_label,
+                "device": str(node.get("path") or node.get("name") or ""),
+                "transport": transport or "غير محدد",
+                "removable": removable,
+                "size": str(node.get("size") or "غير معروف"),
+                "filesystem": str(node.get("fstype") or "غير معروف"),
+                "free_bytes": free_bytes,
+                "is_separate_mount": stat_result.st_dev != root_device,
+            })
+
+        for child in node.get("children") or []:
+            if isinstance(child, dict):
+                visit(child)
+
+    for device in payload.get("blockdevices") or []:
+        if isinstance(device, dict):
+            visit(device)
+
+    return sorted(locations, key=lambda item: (item["path"] != "/", item["path"].casefold()))
+
+
+@frappe.whitelist()
+def get_storage_locations():
+    """Return mounted internal/external volumes visible to the ERPNext server."""
+    _require_manager()
+    locations = _mounted_storage_locations()
+    return {"locations": locations}
+
+
+@frappe.whitelist()
+def browse_storage_directory(mount_path: str, path: str | None = None):
+    """List safe child directories strictly within one currently mounted volume."""
+    _require_manager()
+    locations = _mounted_storage_locations()
+    mount = next((item for item in locations if item["path"] == str(mount_path or "")), None)
+    if not mount:
+        frappe.throw(_("وحدة التخزين المحددة لم تعد متاحة أو لم تعد مركّبة"))
+
+    root = Path(mount["path"])
+    requested_raw = str(path or mount["path"]).strip()
+    requested = Path(os.path.normpath(requested_raw))
+    if not requested.is_absolute():
+        frappe.throw(_("مسار المجلد غير صالح"))
+
+    try:
+        # Reject symlinks in the requested path before resolving it.
+        for component in (requested, *requested.parents):
+            if component.is_symlink():
+                frappe.throw(_("لا يمكن استعراض مسار يحتوي على رابط رمزي"))
+            if component == root:
+                break
+        current = requested.resolve(strict=True)
+        resolved_root = root.resolve(strict=True)
+        if current != resolved_root and resolved_root not in current.parents:
+            frappe.throw(_("لا يمكن الخروج من وحدة التخزين المحددة"))
+        if not current.is_dir():
+            frappe.throw(_("المسار المحدد ليس مجلداً"))
+        root_device = os.stat(resolved_root).st_dev
+        if os.stat(current).st_dev != root_device:
+            frappe.throw(_("لا يمكن الانتقال عبر وحدة تخزين أخرى من داخل هذا المسار"))
+        free_bytes = __import__("shutil").disk_usage(current).free
+    except FileNotFoundError:
+        frappe.throw(_("المجلد غير موجود حالياً"))
+    except PermissionError:
+        frappe.throw(_("لا توجد صلاحية لاستعراض هذا المجلد"))
+    except OSError as exc:
+        frappe.throw(_("تعذر استعراض المجلد: {0}").format(str(exc)[:200]))
+
+    directories = []
+    try:
+        children = sorted(current.iterdir(), key=lambda item: item.name.casefold())
+        for child in children:
+            if child.is_symlink() or not child.is_dir():
+                continue
+            if current == Path("/"):
+                if child.name in {root_name.lstrip("/") for root_name in _STORAGE_HIDDEN_ROOTS}:
+                    continue
+            try:
+                if os.stat(child).st_dev != root_device:
+                    continue
+            except OSError:
+                continue
+            directories.append({"name": child.name, "path": str(child)})
+            if len(directories) >= 200:
+                break
+    except PermissionError:
+        frappe.throw(_("لا توجد صلاحية لقراءة محتويات هذا المجلد"))
+
+    parent = str(current.parent) if current != resolved_root and resolved_root in current.parents else None
+    if current == Path("/"):
+        parent = None
+    return {
+        "mount_path": str(resolved_root),
+        "mount_label": mount["label"],
+        "mount_kind": mount["kind_label"],
+        "current_path": str(current),
+        "parent_path": parent,
+        "can_select": current != Path("/") and not os.path.ismount(current),
+        "free_bytes": free_bytes,
+        "directories": directories,
+    }
+
+
 def _apps_for_ui(settings: dict) -> list[dict]:
     app_settings = settings.get("apps", {})
     known = discover_apps(_bench_dir())
