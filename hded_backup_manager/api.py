@@ -903,7 +903,8 @@ def start_restore(timestamp: str, storage: str = "active"):
     if system_status.get("service_active"):
         frappe.throw(_("توجد عملية نسخ احتياطي قيد التنفيذ. انتظر حتى تنتهي قبل الاستعادة."))
 
-    app_root = Path(frappe.get_app_path("hded_backup_manager")).resolve(strict=True)
+    app_package = Path(frappe.get_app_path("hded_backup_manager")).resolve(strict=True)
+    app_root = app_package.parent
     runner = app_root / "scripts" / "restore_runner.py"
     python = _bench_dir() / "env" / "bin" / "python"
     if not runner.is_file() or not python.is_file():
