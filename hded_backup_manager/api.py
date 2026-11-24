@@ -248,7 +248,8 @@ def _mounted_storage_locations() -> list[dict]:
             if candidate.is_symlink() or not candidate.is_dir():
                 continue
             if candidate != Path("/"):
-                if any(candidate == Path(root) or Path(root) in candidate.parents for root in _STORAGE_HIDDEN_ROOTS):
+                is_run_media_mount = Path("/run/media") == candidate or Path("/run/media") in candidate.parents
+                if not is_run_media_mount and any(candidate == Path(root) or Path(root) in candidate.parents for root in _STORAGE_HIDDEN_ROOTS):
                     continue
             try:
                 resolved = candidate.resolve(strict=True)
