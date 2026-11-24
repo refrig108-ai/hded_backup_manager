@@ -93,6 +93,7 @@ class BackupDirectoryTests(unittest.TestCase):
     def test_virtualbox_shared_folder_mount_root_can_be_selected(self) -> None:
         target = self.root / "windows-share"
         target.mkdir()
+        target.chmod(0o770)
         with patch(
             "hded_backup_manager.backup_engine._filesystem_type",
             return_value="vboxsf",
