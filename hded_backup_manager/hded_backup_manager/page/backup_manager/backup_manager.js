@@ -667,7 +667,7 @@ class HDEDBBackupManager {
             try {
                 const result = await this.call("get_restore_status");
                 const state = result.status || "idle";
-                if (state === "running") {
+                if (state === "starting" || state === "running") {
                     this.showAlert(result.message || "عملية استعادة قاعدة البيانات قيد التنفيذ...", "info");
                     if (count < 540) {
                         setTimeout(() => poll(count + 1), 5000);
