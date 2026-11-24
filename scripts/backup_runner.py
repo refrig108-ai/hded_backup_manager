@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-from datetime import datetime
 import sys
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +15,6 @@ if str(APP_ROOT) not in sys.path:
 
 from hded_backup_manager.backup_engine import (  # noqa: E402
     apply_retention,
-    create_apps_archive,
     read_settings,
     write_settings,
     prepare_backup_directory,
@@ -22,7 +22,7 @@ from hded_backup_manager.backup_engine import (  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="HDED ERPNext backup runner")
+    parser = argparse.ArgumentParser(description="HDED ERPNext database-only backup runner")
     parser.add_argument("--site", required=True)
     args = parser.parse_args()
 
@@ -41,6 +41,7 @@ def main() -> int:
     if backup_mode == "one_time" and settings.get("one_time_completed_at"):
         print("[HDED] The configured one-time backup has already completed; refusing another run.", file=sys.stderr)
         return 5
+
     storage = settings.get("storage", {})
     try:
         backup_dir = prepare_backup_directory(
@@ -54,42 +55,64 @@ def main() -> int:
         print(f"ERROR: Invalid backup storage directory: {exc}", file=sys.stderr)
         return 4
 
-    command = [
-        str(bench), "--site", args.site, "backup", "--with-files",
-        "--backup-path", str(backup_dir),
-    ]
-    print(f"[HDED] Starting official Bench backup in: {backup_dir}", flush=True)
-    subprocess.run(command, cwd=BENCH_DIR, check=True)
-
     prefix = args.site.replace(".", "_")
-    config_files = sorted(backup_dir.glob(f"*-{prefix}-site_config_backup.json"))
-    if not config_files:
-        print("ERROR: Bench backup completed but no site config backup was found", file=sys.stderr)
-        return 3
-    timestamp = config_files[-1].name.split("-", 1)[0]
+    # Bench always creates a site_config_backup.json alongside the SQL dump.
+    # Store that sensitive config file in a temporary private directory so the
+    # selected destination receives exactly one file: database.sql.gz.
+    with tempfile.TemporaryDirectory(prefix="hded-backup-config-") as temporary_config_dir:
+        temporary_config = Path(temporary_config_dir) / "site_config_backup.json"
+        command = [
+            str(bench), "--site", args.site, "backup",
+            "--backup-path", str(backup_dir),
+            "--backup-path-conf", str(temporary_config),
+        ]
+        print(f"[HDED] Starting database-only backup in: {backup_dir}", flush=True)
+        subprocess.run(command, cwd=BENCH_DIR, check=True)
 
-    if settings.get("apps", {}).get("archive_enabled", True):
-        print("[HDED] Archiving selected application source directories", flush=True)
-        archive = create_apps_archive(BENCH_DIR, backup_dir, args.site, timestamp, settings)
-        print(f"[HDED] Application archive created: {archive.name} ({archive.stat().st_size} bytes)", flush=True)
+    database_pattern = f"*-{prefix}-database.sql.gz"
+    database_files = [
+        path for path in backup_dir.glob(database_pattern)
+        if path.is_file() and not path.is_symlink() and path.stat().st_size > 0
+    ]
+    if not database_files:
+        print("ERROR: Bench backup completed but no database dump was found", file=sys.stderr)
+        return 3
+
+    database_path = max(database_files, key=lambda path: (path.stat().st_mtime_ns, path.name))
+    timestamp = database_path.name.split("-", 1)[0]
+    try:
+        datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
+    except ValueError:
+        print("ERROR: Database backup filename has an invalid timestamp", file=sys.stderr)
+        return 3
+
+    print(
+        f"[HDED] Database-only backup created: {database_path.name} "
+        f"({database_path.stat().st_size} bytes)",
+        flush=True,
+    )
 
     retention = settings.get("retention", {})
     if retention.get("auto_apply", False):
-        print("[HDED] Applying configured retention policy", flush=True)
+        print("[HDED] Applying configured database-backup retention policy", flush=True)
         result = apply_retention(backup_dir, prefix, retention)
-        print(f"[HDED] Retention removed {result['deleted_count']} files; incomplete sets preserved: {result['incomplete_preserved']}", flush=True)
+        print(
+            f"[HDED] Retention removed {result['deleted_count']} files; "
+            f"incomplete backup sets preserved: {result['incomplete_preserved']}",
+            flush=True,
+        )
 
     if backup_mode == "one_time":
-        # Re-read the settings before marking completion so a concurrent settings
-        # save is never overwritten with the stale in-memory settings from startup.
+        # Re-read settings before marking completion to avoid overwriting a
+        # concurrent settings save with stale values from startup.
         latest_settings = read_settings(settings_path)
         if latest_settings.get("backup_mode") == "one_time":
             latest_settings["one_time_completed_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
             latest_settings["one_time_timestamp"] = timestamp
             write_settings(settings_path, latest_settings)
-            print("[HDED] One-time backup marked as completed; future automatic or manual reruns are blocked.", flush=True)
+            print("[HDED] One-time database backup marked as completed.", flush=True)
 
-    print("[HDED] Backup workflow completed successfully", flush=True)
+    print("[HDED] Database-only backup workflow completed successfully", flush=True)
     return 0
 
 
@@ -100,5 +123,5 @@ if __name__ == "__main__":
         print(f"ERROR: Bench backup failed with exit code {exc.returncode}", file=sys.stderr)
         raise SystemExit(exc.returncode or 1)
     except Exception as exc:
-        print(f"ERROR: HDED backup post-processing failed: {exc}", file=sys.stderr)
+        print(f"ERROR: HDED database backup post-processing failed: {exc}", file=sys.stderr)
         raise SystemExit(1)
