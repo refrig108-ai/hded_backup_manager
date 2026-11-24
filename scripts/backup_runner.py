@@ -15,6 +15,7 @@ from hded_backup_manager.backup_engine import (  # noqa: E402
     apply_retention,
     create_apps_archive,
     read_settings,
+    prepare_backup_directory,
 )
 
 
@@ -30,21 +31,29 @@ def main() -> int:
         print("ERROR: bench executable was not found", file=sys.stderr)
         return 2
 
-    command = [str(bench), "--site", args.site, "backup", "--with-files"]
-    print("[HDED] Starting official Bench backup", flush=True)
-    subprocess.run(command, cwd=BENCH_DIR, check=True)
-
     site_path = BENCH_DIR / "sites" / args.site
     private_dir = site_path / "private"
-    backup_dir = private_dir / "backups"
     settings_path = private_dir / "hded_backup_manager_settings.json"
-    if backup_dir.is_symlink() or not backup_dir.is_dir():
-        print("ERROR: Backup directory is missing or is a symbolic link", file=sys.stderr)
-        return 4
-    if backup_dir.resolve(strict=True).parent != private_dir.resolve(strict=True):
-        print("ERROR: Backup directory resolves outside the site's private directory", file=sys.stderr)
-        return 4
     settings = read_settings(settings_path)
+    storage = settings.get("storage", {})
+    try:
+        backup_dir = prepare_backup_directory(
+            site_path=site_path,
+            bench_dir=BENCH_DIR,
+            local_path=storage.get("local_path", ""),
+            require_mount=bool(storage.get("require_mount", False)),
+            create=True,
+        )
+    except Exception as exc:
+        print(f"ERROR: Invalid backup storage directory: {exc}", file=sys.stderr)
+        return 4
+
+    command = [
+        str(bench), "--site", args.site, "backup", "--with-files",
+        "--backup-path", str(backup_dir),
+    ]
+    print(f"[HDED] Starting official Bench backup in: {backup_dir}", flush=True)
+    subprocess.run(command, cwd=BENCH_DIR, check=True)
 
     prefix = args.site.replace(".", "_")
     config_files = sorted(backup_dir.glob(f"*-{prefix}-site_config_backup.json"))
