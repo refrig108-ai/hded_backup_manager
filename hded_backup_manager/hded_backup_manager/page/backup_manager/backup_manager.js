@@ -411,7 +411,7 @@ class HDEDBBackupManager {
 
     async openStorageBrowser() {
         const dialog = new frappe.ui.Dialog({
-            title: "استعراض أقراص ومجلدات خادم Ubuntu",
+            title: "استعراض أقراص Ubuntu ومجلدات Windows المشتركة",
             fields: [{ fieldtype: "HTML", fieldname: "storage_browser" }],
             primary_action_label: "إغلاق",
             primary_action: () => dialog.hide(),
@@ -492,7 +492,7 @@ class HDEDBBackupManager {
             }).join("");
             const choose = result.can_select
                 ? `<button type="button" class="btn btn-primary storage-folder-choose" data-mount="${mount}" data-path="${current}">اختيار هذا المجلد للحفظ</button>`
-                : '<span class="muted">اختر مجلدًا فرعيًا داخل القرص؛ لا يمكن حفظ النسخ في جذر القرص مباشرة.</span>';
+                : '<span class="muted">هذا المجلد غير قابل للاختيار أو لا توجد صلاحية كتابة إليه.</span>';
             container.html(`<div class="storage-browser-toolbar"><button type="button" class="btn btn-default storage-back-volumes">${this.icon("database", "small")} الأقراص</button>${parent}<span class="storage-browser-kind">${kind}</span></div><div class="storage-browser-current"><small>المسار الحالي</small><code dir="ltr">${current}</code><small>المساحة المتاحة: ${this.formatBytes(result.free_bytes)}</small></div><div class="storage-folder-list">${folders || '<p class="muted">لا توجد مجلدات فرعية ظاهرة داخل هذا المجلد.</p>'}</div><div class="storage-browser-select">${choose}</div>`);
         } catch (error) {
             container.html('<div class="alert alert-danger storage-browser-error">تعذر استعراض هذا المجلد. قد تكون الوحدة مفصولة أو لا توجد صلاحية قراءة.</div><button type="button" class="btn btn-default storage-back-volumes">العودة إلى الأقراص</button>');
