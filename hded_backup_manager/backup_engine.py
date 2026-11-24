@@ -11,12 +11,9 @@ from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-CORE_BACKUP_SUFFIXES = (
-    "database.sql.gz",
-    "files.tar",
-    "private-files.tar",
-    "site_config_backup.json",
-)
+# A new backup set is complete when its single database dump exists.
+# Legacy file/config/application archives remain discoverable for older backups.
+CORE_BACKUP_SUFFIXES = ("database.sql.gz",)
 APP_ARCHIVE_SUFFIX = "apps.tar.gz"
 TIMESTAMP_RE = re.compile(r"^(\d{8}_\d{6})-(.+?)-(database\.sql\.gz|files\.tar|private-files\.tar|site_config_backup\.json|apps\.tar\.gz)$")
 APP_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -34,7 +31,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "retention": {"auto_apply": False, "daily": 7, "weekly": 4, "monthly": 12},
     "storage": {"local_path": "", "require_mount": False, "previous_paths": []},
     "apps": {
-        "archive_enabled": True,
+        "archive_enabled": False,
         "auto_include_new_apps": True,
         "selected_apps": [],
         "excluded_apps": ["frappe", "erpnext"],
