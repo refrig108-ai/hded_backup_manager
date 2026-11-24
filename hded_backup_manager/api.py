@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 from datetime import datetime
@@ -858,6 +859,117 @@ def apply_retention_now(settings_json: str | None = None, expected_timestamps: s
         "message": "اكتمل تطبيق سياسة الاحتفاظ. لم تُحذف النسخ غير المكتملة.",
         "deleted_count": result["deleted_count"],
         "incomplete_preserved": result["incomplete_preserved"],
+    }
+
+
+
+def _restore_status_path() -> Path:
+    private_root = Path(frappe.get_site_path("private")).resolve(strict=True)
+    path = private_root / "hded_backup_manager_restore_status.json"
+    if path.is_symlink() or path.resolve().parent != private_root:
+        frappe.throw(_("ملف حالة الاستعادة غير صالح"))
+    return path
+
+
+@frappe.whitelist(methods=["POST"])
+def start_restore(timestamp: str, storage: str = "active"):
+    """Start a detached, safety-backed database restore for a verified backup."""
+    _require_manager()
+    paths = _expected_files(timestamp, storage)
+    folders = _backup_dirs(allow_unavailable_active=(storage != "active"))
+    backup_dir = folders.get(storage)
+    if backup_dir is None:
+        frappe.throw(_("مجلد النسخة غير متاح حالياً"))
+    backup_file = paths["database"]
+    if backup_file.is_symlink() or not backup_file.is_file() or backup_file.resolve(strict=True).parent != backup_dir.resolve(strict=True):
+        frappe.throw(_("ملف قاعدة البيانات غير موجود أو غير صالح"))
+    try:
+        with gzip.open(backup_file, "rb") as stream:
+            while stream.read(1024 * 1024):
+                pass
+    except Exception as exc:
+        frappe.throw(_("ملف النسخة تالف ولا يمكن استعادته: {0}").format(str(exc)[:200]))
+
+    status_path = _restore_status_path()
+    current = {}
+    try:
+        current = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        pass
+    if current.get("status") in {"starting", "running"}:
+        frappe.throw(_("توجد عملية استعادة أخرى قيد التنفيذ. انتظر حتى تنتهي."))
+
+    system_status = _system_status()
+    if system_status.get("service_active"):
+        frappe.throw(_("توجد عملية نسخ احتياطي قيد التنفيذ. انتظر حتى تنتهي قبل الاستعادة."))
+
+    app_root = Path(frappe.get_app_path("hded_backup_manager")).resolve(strict=True)
+    runner = app_root / "scripts" / "restore_runner.py"
+    python = _bench_dir() / "env" / "bin" / "python"
+    if not runner.is_file() or not python.is_file():
+        frappe.throw(_("ملف تشغيل الاستعادة أو بيئة Python غير موجودة"))
+
+    log_path = Path(frappe.get_site_path("private", "hded_backup_restore.log"))
+    status_payload = {
+        "status": "starting",
+        "message": "تم قبول طلب الاستعادة. جارٍ تشغيل عملية الاستعادة الآمنة.",
+        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "source": backup_file.name,
+    }
+    status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.chmod(status_path, 0o600)
+    log_stream = open(log_path, "ab", buffering=0)
+    os.chmod(log_path, 0o600)
+    try:
+        process = subprocess.Popen(
+            [
+                str(python), str(runner),
+                "--site", frappe.local.site,
+                "--backup-file", str(backup_file.resolve(strict=True)),
+                "--status-file", str(status_path),
+            ],
+            cwd=str(_bench_dir()),
+            stdin=subprocess.DEVNULL,
+            stdout=log_stream,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            close_fds=True,
+            env={
+                **os.environ,
+                "PATH": f"{_bench_dir() / 'env' / 'bin'}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            },
+        )
+    except Exception:
+        log_stream.close()
+        status_payload.update({"status": "failed", "message": "تعذر تشغيل عملية الاستعادة."})
+        status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        raise
+    log_stream.close()
+    status_payload["pid"] = process.pid
+    return {"message": "بدأت عملية الاستعادة الآمنة. ستُنشأ نسخة أمان أولاً، ثم يبدأ الاستبدال."}
+
+
+@frappe.whitelist()
+def get_restore_status():
+    _require_manager()
+    path = _restore_status_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("invalid status")
+    except FileNotFoundError:
+        return {"status": "idle", "message": "لم تبدأ أي عملية استعادة بعد."}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {"status": "failed", "message": "تعذر قراءة حالة الاستعادة. راجع سجل الاستعادة على الخادم."}
+    allowed = {"idle", "starting", "running", "success", "failed", "critical"}
+    if payload.get("status") not in allowed:
+        return {"status": "failed", "message": "حالة الاستعادة المسجلة غير صالحة."}
+    return {
+        "status": payload.get("status"),
+        "message": str(payload.get("message") or "")[:1000],
+        "updated_at": payload.get("updated_at"),
+        "source": payload.get("source"),
+        "safety_backup": payload.get("safety_backup"),
     }
 
 
