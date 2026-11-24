@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from hded_backup_manager.backup_engine import (
     DEFAULT_SETTINGS,
+    _is_vboxsf_path,
     prepare_backup_directory,
     read_settings,
     write_settings,
@@ -89,6 +90,18 @@ class BackupDirectoryTests(unittest.TestCase):
         self.assertEqual(result, target)
         chmod.assert_not_called()
         self.assertTrue(os.access(result, os.W_OK | os.X_OK))
+
+    def test_vboxsf_detection_falls_back_to_mountinfo_when_findmnt_reports_autofs(self) -> None:
+        mountinfo = (
+            "36 25 0:53 / /mnt/HDED_Backups rw,relatime - vboxsf DHDED_Backups rw\n"
+        )
+        with patch(
+            "hded_backup_manager.backup_engine._filesystem_type",
+            return_value="autofs",
+        ), patch("pathlib.Path.read_text", return_value=mountinfo):
+            self.assertTrue(_is_vboxsf_path(Path("/mnt/HDED_Backups")))
+            self.assertTrue(_is_vboxsf_path(Path("/mnt/HDED_Backups/ERPNext")))
+            self.assertFalse(_is_vboxsf_path(Path("/mnt/HDED_Backups_Other")))
 
     def test_virtualbox_shared_folder_mount_root_can_be_selected(self) -> None:
         target = self.root / "windows-share"
