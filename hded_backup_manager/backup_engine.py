@@ -474,7 +474,7 @@ def list_backup_sets(backup_dir: Path, site_prefix: str) -> list[dict[str, Any]]
 
 
 def retention_plan(backup_dir: Path, site_prefix: str, retention: dict[str, Any]) -> dict[str, Any]:
-    sets = [row for row in list_backup_sets(backup_dir, site_prefix) if row["complete"]]
+    sets = [row for row in list_backup_sets(backup_dir, site_prefix) if row["complete"] and set(row["files"]) == {"database.sql.gz"}]
     keep: set[str] = set()
 
     daily_limit = int(retention.get("daily", 7))
