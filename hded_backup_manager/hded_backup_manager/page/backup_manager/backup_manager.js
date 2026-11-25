@@ -146,7 +146,7 @@ class HDEDBBackupManager {
                   <button type="button" class="btn btn-default" id="google-drive-refresh">${this.icon("cloud")} تحديث قائمة النسخ</button>
                   <button type="button" class="btn btn-danger" id="google-drive-disconnect">فصل الحساب</button>
                 </div>
-                <p class="muted google-drive-help">أنشئ OAuth Client من نوع Web application في Google Cloud، وفعّل Google Drive API، ثم أضف عنوان إعادة التوجيه الظاهر هنا حرفياً في Authorized redirect URIs. استخدم نطاقاً صالحاً مع HTTPS وشهادة TLS موثوقة؛ عنوان hded.erp الداخلي أو HTTP لا يصلحان لـ OAuth.</p>
+                <p class="muted google-drive-help">أنشئ OAuth Client من نوع Web application في Google Cloud، وفعّل Google Drive API، ثم أضف عنوان إعادة التوجيه الظاهر هنا حرفياً في Authorized redirect URIs. استخدم نطاقاً صالحاً مع HTTPS وشهادة TLS موثوقة؛ عنوان hded.erp الداخلي أو HTTP لا يصلحان لـ OAuth. انقل تطبيق OAuth إلى In production؛ حالة Testing للتطبيقات الخارجية تجعل Refresh Token ينتهي بعد 7 أيام.</p>
                 <div class="google-drive-meta" id="google-drive-meta"></div>
               </section>
               <section class="backup-panel">
