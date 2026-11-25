@@ -4,7 +4,7 @@ app_publisher = "HDED"
 app_description = "Database-only backup and restore management for HDED ERPNext"
 app_email = ""
 app_license = "MIT"
-app_version = "0.4.1"
+app_version = "0.4.2"
 
 add_to_apps_screen = [
     {
