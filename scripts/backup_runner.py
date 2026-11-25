@@ -92,6 +92,43 @@ def main() -> int:
         flush=True,
     )
 
+    # Cloud upload is deliberately isolated from local backup success: a
+    # Google outage must never turn a valid local database backup into failure.
+    try:
+        import frappe
+
+        frappe.init(site=args.site, sites_path=str(BENCH_DIR / "sites"))
+        try:
+            from hded_backup_manager.google_drive import process_backup_uploads
+
+            cloud_result = process_backup_uploads(
+                database_path,
+                site_path=site_path,
+            )
+            if cloud_result.get("enabled"):
+                print(
+                    "[HDED] Google Drive upload: "
+                    f"uploaded={cloud_result.get('uploaded', 0)}, "
+                    f"pending={cloud_result.get('pending', 0)}",
+                    flush=True,
+                )
+                if cloud_result.get("last_error"):
+                    print(
+                        f"[HDED] Google Drive warning: {cloud_result['last_error']}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+            else:
+                print("[HDED] Google Drive automatic upload is not enabled.", flush=True)
+        finally:
+            frappe.destroy()
+    except Exception as exc:
+        print(
+            f"[HDED] Google Drive upload could not run; local backup is safe: {str(exc)[:400]}",
+            file=sys.stderr,
+            flush=True,
+        )
+
     retention = settings.get("retention", {})
     if retention.get("auto_apply", False):
         print("[HDED] Applying configured database-backup retention policy", flush=True)
