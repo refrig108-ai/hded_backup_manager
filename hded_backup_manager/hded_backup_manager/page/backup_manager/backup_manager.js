@@ -128,20 +128,34 @@ class HDEDBBackupManager {
 
             <div id="backup-panel-external" class="backup-tab-panel" data-panel="external" role="tabpanel" hidden>
               <section class="backup-panel">
-                <div class="panel-heading"><h3>التخزين السحابي للنسخ الكاملة</h3><span class="state-pill is-off">الربط الفعلي غير مفعّل</span></div>
-                <p class="muted">تستخدم هذه الخدمات لحفظ ملف قاعدة البيانات المضغوط خارج جهاز ERPNext. أزرار الإعداد تعرض خطوات التجهيز؛ لن تظهر الخدمة متصلة قبل تنفيذ OAuth ونجاح رفع ملف تجريبي والتحقق منه.</p>
-                <div class="provider-grid">
-                  <article class="provider-card provider-drive">
-                    <div class="provider-title">${this.providerLogo("google-drive")}<div><h4>Google Drive</h4><p>تخزين قاعدة البيانات والملفات وأرشيف التطبيقات خارج الجهاز.</p></div></div>
-                    <span class="state-pill is-off">غير مربوط</span>
-                    <button type="button" class="btn provider-action provider-drive-button cloud-setup-button" data-cloud-provider="google">${this.icon("drive")} إعداد ربط Google Drive</button>
-                  </article>
-                  <article class="provider-card provider-onedrive">
-                    <div class="provider-title">${this.providerLogo("onedrive")}<div><h4>Microsoft OneDrive</h4><p>يدعم حسابات Microsoft الشخصية مثل Hotmail وOutlook.</p></div></div>
-                    <span class="state-pill is-off">غير مربوط</span>
-                    <button type="button" class="btn provider-action provider-onedrive-button cloud-setup-button" data-cloud-provider="microsoft">${this.icon("cloud")} إعداد ربط OneDrive</button>
-                  </article>
+                <div class="panel-heading"><h3>Google Drive — نسخ قاعدة البيانات</h3><span id="google-drive-state" class="state-pill is-off">غير مربوط</span></div>
+                <p class="muted">يرفع التطبيق ملف قاعدة البيانات المضغوط فقط بعد نجاح النسخ المحلي. لا يرفع إعدادات الموقع أو مفاتيح التشفير أو الملفات العامة والخاصة والمرفقات.</p>
+                <div class="google-drive-status" id="google-drive-status">جارٍ قراءة حالة الربط...</div>
+                <div class="google-drive-form">
+                  <div><label for="google-drive-client-id">OAuth Client ID</label><input type="text" id="google-drive-client-id" class="form-control" dir="ltr" autocomplete="off" placeholder="xxxxx.apps.googleusercontent.com"></div>
+                  <div><label for="google-drive-client-secret">OAuth Client Secret</label><input type="password" id="google-drive-client-secret" class="form-control" dir="ltr" autocomplete="new-password" placeholder="يُدخل مرة واحدة ويُخزّن مشفّراً على الخادم"></div>
+                  <div class="google-drive-wide"><label for="google-drive-redirect-uri">عنوان إعادة التوجيه (HTTPS)</label><input type="url" id="google-drive-redirect-uri" class="form-control" dir="ltr" placeholder="https://your-domain.example/api/method/hded_backup_manager.api.google_drive_oauth_callback"></div>
+                  <div><label for="google-drive-folder-name">اسم مجلد النسخ في Google Drive</label><input type="text" id="google-drive-folder-name" class="form-control" value="HDED ERP Backups"></div>
+                  <div class="google-drive-check"><label class="switch-label"><input type="checkbox" id="google-drive-auto-upload"> رفع النسخ الجديدة تلقائياً بعد نجاح النسخ المحلي</label></div>
                 </div>
+                <div class="google-drive-actions">
+                  <button type="button" class="btn btn-primary" id="google-drive-save">${this.icon("check")} حفظ إعدادات الربط</button>
+                  <button type="button" class="btn btn-default" id="google-drive-connect">${this.icon("link")} ربط حساب Google</button>
+                  <button type="button" class="btn btn-default" id="google-drive-test">${this.icon("shield")} اختبار الاتصال</button>
+                  <button type="button" class="btn btn-default" id="google-drive-retry">${this.icon("refresh")} إعادة رفع النسخ المعلقة</button>
+                  <button type="button" class="btn btn-default" id="google-drive-refresh">${this.icon("cloud")} تحديث قائمة النسخ</button>
+                  <button type="button" class="btn btn-danger" id="google-drive-disconnect">فصل الحساب</button>
+                </div>
+                <p class="muted google-drive-help">أنشئ OAuth Client من نوع Web application في Google Cloud، وفعّل Google Drive API، ثم أضف عنوان إعادة التوجيه الظاهر هنا حرفياً في Authorized redirect URIs. استخدم نطاقاً صالحاً مع HTTPS وشهادة TLS موثوقة؛ عنوان hded.erp الداخلي أو HTTP لا يصلحان لـ OAuth.</p>
+                <div class="google-drive-meta" id="google-drive-meta"></div>
+              </section>
+              <section class="backup-panel">
+                <div class="panel-heading"><h3>النسخ المحفوظة في Google Drive</h3><span class="muted">استعادة قاعدة البيانات فقط</span></div>
+                <div id="google-drive-backups" class="google-drive-backups"><p class="muted">اربط حساب Google ثم حدّث القائمة لعرض النسخ السحابية.</p></div>
+              </section>
+              <section class="backup-panel provider-card provider-onedrive">
+                <div class="panel-heading"><h3>Microsoft OneDrive</h3><span class="state-pill is-off">غير مفعّل</span></div>
+                <p class="muted">ربط OneDrive غير مشمول في هذه المرحلة. واجهة Google Drive مستقلة ولا تؤثر في النسخ المحلية.</p>
               </section>
 
               <section class="backup-panel">
@@ -194,6 +208,13 @@ class HDEDBBackupManager {
         this.body.find("#apply-retention").on("click", () => this.applyRetention());
         this.body.find(".email-connect-button").on("click", (event) => this.openEmailConnection($(event.currentTarget).attr("data-email-provider")));
         this.body.find(".cloud-setup-button").on("click", (event) => this.openCloudSetup($(event.currentTarget).attr("data-cloud-provider")));
+        this.body.find("#google-drive-save").on("click", () => this.saveGoogleDriveSettings());
+        this.body.find("#google-drive-connect").on("click", () => this.connectGoogleDrive());
+        this.body.find("#google-drive-test").on("click", () => this.testGoogleDrive());
+        this.body.find("#google-drive-disconnect").on("click", () => this.disconnectGoogleDrive());
+        this.body.find("#google-drive-retry").on("click", () => this.retryGoogleDriveUploads());
+        this.body.find("#google-drive-refresh").on("click", () => this.loadGoogleDriveBackups());
+        this.body.on("click", ".restore-drive-backup", (event) => this.startDriveRestore($(event.currentTarget).data("file-id")));
         this.body.on("click", ".verify-backup", (event) => this.verify($(event.currentTarget).data("timestamp"), $(event.currentTarget).data("storage") || "active"));
         this.body.on("click", ".download-backup", (event) => this.download($(event.currentTarget).data("filename"), $(event.currentTarget).data("storage") || "active"));
         this.body.on("click", ".restore-backup", (event) => this.startRestore($(event.currentTarget).data("timestamp"), $(event.currentTarget).data("storage") || "active"));
@@ -226,6 +247,8 @@ class HDEDBBackupManager {
         this.showAlert("جارٍ تحديث معلومات النسخ الاحتياطي...", "info");
         try {
             const data = await this.call("get_dashboard");
+            try { data.google_drive = await this.call("get_google_drive_status"); }
+            catch (driveError) { data.google_drive = data.google_drive || {}; }
             this.renderData(data);
             this.hideAlert();
         } catch (error) {
@@ -265,6 +288,7 @@ class HDEDBBackupManager {
         this.body.find("#retention-weekly").val(retention.weekly ?? 4);
         this.body.find("#retention-monthly").val(retention.monthly ?? 12);
         this.renderEmailConnections(data.email_connections || {});
+        this.renderGoogleDriveStatus(data.google_drive || {});
 
         const rows = (data.backups || []).map((item) => {
             const state = item.complete ? '<span class="state-pill is-on">مكتملة</span>' : '<span class="state-pill is-off">غير مكتملة</span>';
@@ -277,6 +301,172 @@ class HDEDBBackupManager {
             return `<tr><td>${frappe.utils.escape_html(item.created)}</td><td>${state} <span class="muted">(${item.file_count}/${item.file_total})</span><div>${appState}</div>${storageLabel}</td><td>${frappe.utils.escape_html(item.size_label)}</td><td>${links}</td><td><div class="backup-row-actions"><button type="button" class="btn btn-xs verify-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${item.complete ? "" : "disabled"}>${this.icon("shield", "small")} فحص السلامة</button><button type="button" class="btn btn-xs btn-danger restore-backup" data-timestamp="${frappe.utils.escape_html(item.timestamp)}" data-storage="${storage}" ${canRestore ? "" : "disabled"}>${this.icon("refresh", "small")} استعادة قاعدة البيانات</button></div></td></tr>`;
         }).join("");
         this.body.find("#backup-rows").html(rows || '<tr><td colspan="5" class="text-center muted">لا توجد نسخ احتياطية لهذا الموقع</td></tr>');
+    }
+
+
+    renderGoogleDriveStatus(status = {}) {
+        this.googleDriveStatus = status || {};
+        if (status.client_id !== undefined) this.body.find("#google-drive-client-id").val(status.client_id || "");
+        const redirect = status.redirect_uri || status.suggested_redirect_uri || "";
+        const redirectInput = this.body.find("#google-drive-redirect-uri");
+        if (!redirectInput.val() || redirectInput.attr("data-loaded") !== "1") {
+            redirectInput.val(redirect);
+            redirectInput.attr("data-loaded", "1");
+        }
+        this.body.find("#google-drive-folder-name").val(status.folder_name || "HDED ERP Backups");
+        this.body.find("#google-drive-auto-upload").prop("checked", !!status.auto_upload);
+
+        const connected = !!status.connected;
+        this.body.find("#google-drive-state")
+            .text(connected ? "حساب Google مربوط" : (status.configured ? "الإعداد محفوظ — لم يتم الربط" : "غير مربوط"))
+            .toggleClass("is-on", connected)
+            .toggleClass("is-off", !connected);
+        const parts = [];
+        if (status.connected_at) parts.push("تاريخ الربط: " + status.connected_at);
+        parts.push("النسخ المعلقة: " + (status.pending_count ?? 0));
+        parts.push("النسخ التي رُفع سجلها: " + (status.uploaded_count ?? 0));
+        if (status.last_upload && status.last_upload.uploaded_at) {
+            parts.push("آخر رفع ناجح: " + status.last_upload.uploaded_at);
+        }
+        this.body.find("#google-drive-status").text(
+            connected ? "تم تفويض حساب Google Drive." : "لم يكتمل تفويض حساب Google Drive بعد."
+        ).toggleClass("text-success", connected).toggleClass("text-danger", !connected);
+        this.body.find("#google-drive-meta").text(parts.join(" — "));
+        if (status.last_error) {
+            this.body.find("#google-drive-meta").append(
+                $("<div>").addClass("text-danger").text("آخر خطأ رفع: " + status.last_error)
+            );
+        }
+        this.body.find("#google-drive-connect").prop("disabled", !status.configured);
+        this.body.find("#google-drive-test, #google-drive-disconnect, #google-drive-refresh, #google-drive-retry")
+            .prop("disabled", !connected);
+        if (connected && !this.googleDriveBackupsLoaded) {
+            this.googleDriveBackupsLoaded = true;
+            this.loadGoogleDriveBackups();
+        }
+    }
+
+    async saveGoogleDriveSettings() {
+        const args = {
+            client_id: (this.body.find("#google-drive-client-id").val() || "").trim(),
+            client_secret: this.body.find("#google-drive-client-secret").val() || "",
+            redirect_uri: (this.body.find("#google-drive-redirect-uri").val() || "").trim(),
+            folder_name: (this.body.find("#google-drive-folder-name").val() || "HDED ERP Backups").trim(),
+            auto_upload: this.body.find("#google-drive-auto-upload").is(":checked"),
+        };
+        try {
+            const result = await this.call("save_google_drive_settings", args);
+            this.body.find("#google-drive-client-secret").val("");
+            frappe.show_alert({ message: result.message || "تم حفظ إعدادات Google Drive.", indicator: "green" });
+            const status = await this.call("get_google_drive_status");
+            this.renderGoogleDriveStatus(status);
+            return true;
+        } catch (error) {
+            this.showAlert("تعذر حفظ إعدادات Google Drive. تحقق من Client ID وClient Secret وعنوان HTTPS.", "danger");
+            return false;
+        }
+    }
+
+    async connectGoogleDrive() {
+        const saved = await this.saveGoogleDriveSettings();
+        if (!saved) return;
+        try {
+            const result = await this.call("begin_google_drive_oauth");
+            if (!result || !result.authorization_url) throw new Error("Missing Google authorization URL");
+            window.location.assign(result.authorization_url);
+        } catch (error) {
+            this.showAlert("تعذر بدء تفويض Google. راجع بيانات OAuth وعنوان إعادة التوجيه.", "danger");
+        }
+    }
+
+    async testGoogleDrive() {
+        this.showAlert("جارٍ اختبار اتصال Google Drive وإنشاء مجلد النسخ إن لم يكن موجوداً...", "info");
+        try {
+            const result = await this.call("test_google_drive_connection");
+            this.showAlert("نجح الاتصال بـ Google Drive. مجلد النسخ: " + (result.folder_name || "HDED ERP Backups"), "success");
+            const status = await this.call("get_google_drive_status");
+            this.renderGoogleDriveStatus(status);
+        } catch (error) {
+            this.showAlert("فشل اختبار اتصال Google Drive. تحقق من الاتصال بالإنترنت وصلاحيات Drive API.", "danger");
+        }
+    }
+
+    async disconnectGoogleDrive() {
+        frappe.confirm(
+            "سيتم فصل حساب Google من التطبيق وإيقاف الرفع التلقائي. لن تُحذف النسخ الموجودة في Google Drive. هل تريد المتابعة؟",
+            async () => {
+                try {
+                    await this.call("disconnect_google_drive");
+                    this.googleDriveBackupsLoaded = false;
+                    this.showAlert("تم فصل الحساب. النسخ الموجودة في Google Drive لم تُحذف.", "success");
+                    await this.load();
+                } catch (error) {
+                    this.showAlert("تعذر فصل حساب Google Drive.", "danger");
+                }
+            }
+        );
+    }
+
+    async retryGoogleDriveUploads() {
+        try {
+            const result = await this.call("retry_google_drive_uploads");
+            this.showAlert(result.message || "تمت جدولة إعادة رفع النسخ المعلقة.", "success");
+            setTimeout(() => this.load(), 2500);
+        } catch (error) {
+            this.showAlert("تعذر جدولة إعادة رفع النسخ المعلقة.", "danger");
+        }
+    }
+
+    async loadGoogleDriveBackups() {
+        const target = this.body.find("#google-drive-backups");
+        if (!target.length) return;
+        target.html('<p class="muted">جارٍ قراءة النسخ المحفوظة في Google Drive...</p>');
+        try {
+            const result = await this.call("list_google_drive_backups");
+            const rows = result.backups || [];
+            if (!rows.length) {
+                target.html('<p class="muted">لا توجد نسخ قاعدة بيانات في مجلد HDED على Google Drive.</p>');
+                return;
+            }
+            const html = rows.map((item) => {
+                const size = Number(item.size || 0);
+                const sizeLabel = size >= 1024 * 1024
+                    ? (size / 1024 / 1024).toFixed(2) + " MB"
+                    : (size / 1024).toFixed(1) + " KB";
+                const link = item.web_view_link
+                    ? '<a href="' + frappe.utils.escape_html(item.web_view_link) + '" target="_blank" rel="noopener noreferrer">فتح في Drive</a>'
+                    : "";
+                return '<tr>'
+                    + '<td dir="ltr">' + frappe.utils.escape_html(item.name || "") + '</td>'
+                    + '<td>' + frappe.utils.escape_html(item.created_time || "") + '</td>'
+                    + '<td>' + sizeLabel + '</td>'
+                    + '<td>' + link + '</td>'
+                    + '<td><button type="button" class="btn btn-xs btn-danger restore-drive-backup" data-file-id="'
+                    + frappe.utils.escape_html(item.file_id || "") + '">' + this.icon("refresh", "small")
+                    + ' استعادة قاعدة البيانات</button></td></tr>';
+            }).join("");
+            target.html('<div class="table-responsive"><table class="table table-bordered google-drive-table">'
+                + '<thead><tr><th>اسم النسخة</th><th>تاريخ الرفع</th><th>الحجم</th><th>الرابط</th><th>الإجراء</th></tr></thead>'
+                + '<tbody>' + html + '</tbody></table></div>');
+        } catch (error) {
+            target.html('<p class="text-danger">تعذر قراءة نسخ Google Drive. تحقق من الربط والصلاحيات.</p>');
+        }
+    }
+
+    async startDriveRestore(fileId) {
+        if (!fileId) return;
+        frappe.confirm(
+            "تنبيه: سيتم تنزيل النسخة المحددة من Google Drive، وفحصها، ثم إنشاء نسخة أمان من قاعدة البيانات الحالية قبل استبدالها. الاستعادة تخص قاعدة البيانات فقط ولا تعيد المرفقات أو الملفات أو إعدادات الموقع. سيُمنع الوصول للموقع مؤقتاً. هل تريد المتابعة؟",
+            async () => {
+                this.showAlert("جارٍ تنزيل نسخة Google Drive والتحقق منها ثم تجهيز نسخة الأمان...", "info");
+                try {
+                    await this.call("start_restore_from_drive", { file_id: fileId });
+                    this.pollRestore(0);
+                } catch (error) {
+                    this.showAlert("تعذر بدء الاستعادة من Google Drive. لم يتم تغيير قاعدة البيانات.", "danger");
+                }
+            }
+        );
     }
 
     renderEmailConnections(connections) {
