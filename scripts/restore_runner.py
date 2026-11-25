@@ -80,6 +80,15 @@ def restore_database_dump(site: str, dump_file: Path) -> None:
 
 
 def main() -> int:
+    # Frappe's file logger resolves "../logs" and "<site>/logs" relative
+    # to the process working directory. Its expected working directory is
+    # the bench "sites" directory, not the bench root.
+    sites_dir = BENCH_DIR / "sites"
+    if not sites_dir.is_dir():
+        raise RuntimeError(f"Bench sites directory does not exist: {sites_dir}")
+    os.chdir(sites_dir)
+    (BENCH_DIR / "logs").mkdir(parents=True, exist_ok=True)
+
     parser = argparse.ArgumentParser(description="Safely restore an HDED database-only backup")
     parser.add_argument("--site", required=True)
     source = parser.add_mutually_exclusive_group(required=True)
@@ -90,6 +99,10 @@ def main() -> int:
 
     site = args.site
     site_path = BENCH_DIR / "sites" / site
+    if not site_path.is_dir():
+        write_status(Path(args.status_file), "failed", "لم يتم العثور على مجلد الموقع المطلوب.")
+        return 2
+    (site_path / "logs").mkdir(parents=True, exist_ok=True)
     backup_file: Path
     staged_drive_file = False
     if args.drive_file_id:
