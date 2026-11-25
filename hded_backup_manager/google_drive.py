@@ -9,7 +9,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
-from urllib.request import Request
 
 import requests
 import frappe
@@ -165,6 +164,13 @@ def save_oauth_settings(
     if not folder_name or len(folder_name) > 100:
         raise ValueError("اسم مجلد Google Drive يجب أن يكون بين حرف واحد و100 حرف.")
 
+    old_client_id = str(config.get("client_id") or "")
+    if old_client_id and old_client_id != client_id:
+        # Refresh tokens belong to the OAuth client that issued them. A client change
+        # therefore requires a fresh authorization and a new app-owned Drive folder.
+        config["refresh_token_enc"] = ""
+        config["folder_id"] = ""
+        config["connected_at"] = None
     config["client_id"] = client_id
     config["redirect_uri"] = redirect_uri
     config["folder_name"] = folder_name
@@ -565,7 +571,7 @@ def process_backup_uploads(current_file: str | Path, site_path: Path | None = No
     }
 
 
-def list_drive_backups() -> list[dict]:
+def list_drive_backups(site_prefix: str | None = None) -> list[dict]:
     config = _read_raw()
     if not config.get("refresh_token_enc"):
         raise RuntimeError("اربط حساب Google Drive أولاً.")
@@ -585,6 +591,8 @@ def list_drive_backups() -> list[dict]:
         for item in payload.get("files") or []:
             name = str(item.get("name") or "")
             if not BACKUP_RE.fullmatch(name):
+                continue
+            if site_prefix and not name.endswith(f"-{site_prefix}-database.sql.gz"):
                 continue
             rows.append({
                 "file_id": item.get("id"),
