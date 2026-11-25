@@ -751,6 +751,7 @@ class HDEDBBackupManager {
             const tab = this.body.find('.backup-tab-button[data-tab="external"]');
             tab.prop("hidden", !enabled).attr("aria-hidden", enabled ? "false" : "true");
             if (!enabled && tab.hasClass("active")) this.showTab("dashboard");
+            if (enabled) await this.load();
             status.text(enabled ? "تم إظهار التبويب على هذا الخادم." : "تم إخفاء التبويب على هذا الخادم.").addClass("text-success");
             this.showAlert(result.message || "تم حفظ إعداد الظهور.", "success");
         } catch (error) {
