@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="hded_backup_manager",
-    version="0.4.0",
+    version="0.4.1",
     description="HDED Backup Manager for ERPNext 16",
     author="HDED",
     packages=find_packages(),
