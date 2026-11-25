@@ -80,6 +80,10 @@ class BackupDirectoryTests(unittest.TestCase):
         path = self.site / "private" / "hded_backup_manager_settings.json"
         settings = read_settings(path)
         self.assertEqual(settings["backup_mode"], "scheduled")
+        self.assertFalse(settings["schedule_enabled"])
+        self.assertFalse(settings["schedule"]["daily"]["enabled"])
+        self.assertFalse(settings["schedule"]["weekly"]["enabled"])
+        self.assertFalse(settings["schedule"]["monthly"]["enabled"])
         self.assertIsNone(settings["one_time_completed_at"])
 
     def test_external_storage_tab_is_hidden_by_default_and_persisted_per_site(self) -> None:
