@@ -23,9 +23,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "backup_mode": "scheduled",
     "one_time_completed_at": None,
     "one_time_timestamp": None,
-    "schedule_enabled": True,
+    "schedule_enabled": False,
     "schedule": {
-        "daily": {"enabled": True, "time": "02:00"},
+        "daily": {"enabled": False, "time": "02:00"},
         "weekly": {"enabled": False, "weekday": "Sun", "time": "02:00"},
         "monthly": {"enabled": False, "day": 1, "time": "02:00"},
     },
