@@ -1055,7 +1055,7 @@ def list_google_drive_backups():
     try:
         from hded_backup_manager.google_drive import list_drive_backups
 
-        return {"backups": list_drive_backups()}
+        return {"backups": list_drive_backups(site_prefix=_site_prefix())}
     except Exception as exc:
         frappe.throw(_("تعذر استعراض نسخ Google Drive: {0}").format(str(exc)[:400]))
 
@@ -1084,7 +1084,7 @@ def start_restore_from_drive(file_id: str):
     try:
         from hded_backup_manager.google_drive import list_drive_backups
 
-        remote = next((item for item in list_drive_backups() if item.get("file_id") == file_id), None)
+        remote = next((item for item in list_drive_backups(site_prefix=_site_prefix()) if item.get("file_id") == file_id), None)
     except Exception as exc:
         frappe.throw(_("تعذر التحقق من نسخة Google Drive: {0}").format(str(exc)[:300]))
     if not remote:
