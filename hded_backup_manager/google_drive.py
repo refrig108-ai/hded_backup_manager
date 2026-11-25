@@ -472,6 +472,28 @@ def _resumable_upload(path: Path, folder_id: str, token: str, digest: str) -> di
                     continue
                 if uploaded.status_code >= 500 and attempt + 1 < MAX_RETRIES:
                     time.sleep(min(2 ** attempt, 16))
+                    probe = requests.put(
+                        session_uri,
+                        data=b"",
+                        headers={"Content-Length": "0", "Content-Range": f"bytes */{size}"},
+                        timeout=(20, 60),
+                    )
+                    if probe.status_code in (200, 201):
+                        completed = probe.json()
+                        break
+                    if probe.status_code == 308:
+                        received = probe.headers.get("Range", "")
+                        new_offset = int(received.rsplit("-", 1)[1]) + 1 if received else 0
+                        if new_offset > offset and new_offset <= size:
+                            offset = new_offset
+                            advanced = True
+                            break
+                        no_progress_count += 1
+                        if no_progress_count >= 3:
+                            raise RuntimeError("لم يتقدم رفع Google Drive بعد استجابات الخادم المتكررة.")
+                        continue
+                    if probe.status_code == 404:
+                        raise RuntimeError("انتهت صلاحية جلسة الرفع. أعد محاولة الرفع.")
                     continue
                 raise RuntimeError(f"توقف رفع Google Drive (HTTP {uploaded.status_code}).")
             if completed:
