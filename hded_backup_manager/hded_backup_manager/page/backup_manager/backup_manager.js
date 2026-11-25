@@ -865,12 +865,15 @@ class HDEDBBackupManager {
                     }
                     this.showAlert("ما زالت عملية الاستعادة قيد التنفيذ. حدّث الصفحة لاحقاً لمراجعة الحالة.", "warning");
                 } else if (state === "success") {
-                    this.showAlert(result.message || "اكتملت استعادة قاعدة البيانات.", "success");
+                    const message = result.message || "اكتملت استعادة قاعدة البيانات بنجاح.";
                     await this.load();
+                    this.showRestoreCompletion("success", message);
                 } else if (state === "critical") {
-                    this.showAlert(result.message || "فشلت الاستعادة ولم ينجح الرجوع إلى نسخة الأمان. أبقِ الموقع في وضع الصيانة ولا تستخدمه حتى إصلاح قاعدة البيانات.", "danger");
+                    const message = result.message || "فشلت الاستعادة ولم ينجح الرجوع إلى نسخة الأمان. أبقِ الموقع في وضع الصيانة ولا تستخدمه حتى إصلاح قاعدة البيانات.";
+                    this.showRestoreCompletion("critical", message);
                 } else if (state === "failed") {
-                    this.showAlert(result.message || "فشلت الاستعادة. تم الاحتفاظ بنسخة الأمان إن كانت قد أُنشئت.", "danger");
+                    const message = result.message || "فشلت الاستعادة. تم الاحتفاظ بنسخة الأمان إن كانت قد أُنشئت.";
+                    this.showRestoreCompletion("failed", message);
                 } else {
                     this.showAlert("لا توجد عملية استعادة قيد التنفيذ.", "info");
                 }
@@ -897,6 +900,22 @@ class HDEDBBackupManager {
     }
 
     download(filename, storage = "active") { window.location.href = `/api/method/hded_backup_manager.api.download_backup?filename=${encodeURIComponent(filename)}&storage=${encodeURIComponent(storage)}`; }
+
+    showRestoreCompletion(state, message) {
+        const settings = {
+            success: { title: "اكتملت الاستعادة بنجاح", indicator: "green", alertType: "success" },
+            failed: { title: "انتهت الاستعادة مع فشل", indicator: "orange", alertType: "danger" },
+            critical: { title: "تحذير حرج: فشل الاستعادة والرجوع", indicator: "red", alertType: "danger" },
+        };
+        const notice = settings[state] || settings.failed;
+        this.showAlert(message, notice.alertType);
+        frappe.msgprint({
+            title: notice.title,
+            indicator: notice.indicator,
+            message: `<div dir="rtl" style="white-space:pre-wrap;line-height:1.8">${frappe.utils.escape_html(message)}</div>`,
+        });
+    }
+
     showAlert(message, type) { this.body.find("#backup-alert").removeClass("alert-info alert-success alert-danger").addClass(`alert alert-${type}`).text(message).show(); }
     hideAlert() { this.body.find("#backup-alert").hide(); }
 }
