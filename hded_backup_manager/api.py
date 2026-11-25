@@ -560,16 +560,19 @@ def get_dashboard():
         directory = Path(configured_path).expanduser() if configured_path else Path(frappe.get_site_path("private", "backups"))
     backups = _dashboard_backups(settings)
     status = _system_status()
-    try:
-        from hded_backup_manager.google_drive import public_status as _google_drive_status
+    if settings.get("show_external_storage", False):
+        try:
+            from hded_backup_manager.google_drive import public_status as _google_drive_status
 
-        google_drive_status = _google_drive_status()
-    except Exception as exc:
-        frappe.log_error(title="HDED Google Drive Status", message=str(exc))
-        google_drive_status = {
-            "configured": False, "connected": False, "auto_upload": False,
-            "pending_count": 0, "last_error": "تعذر قراءة حالة Google Drive",
-        }
+            google_drive_status = _google_drive_status()
+        except Exception as exc:
+            frappe.log_error(title="HDED Google Drive Status", message=str(exc))
+            google_drive_status = {
+                "configured": False, "connected": False, "auto_upload": False,
+                "pending_count": 0, "last_error": "تعذر قراءة حالة Google Drive",
+            }
+    else:
+        google_drive_status = {}
     storage_info = backup_directory_details(directory) if directories.get("active") is not None else None
     previous_directories = [str(path) for key, path in directories.items() if key.startswith("previous_") and path is not None]
     total_bytes = sum(item["total_size"] for item in backups)
@@ -764,8 +767,12 @@ def _validate_settings(raw: dict) -> dict:
         "excluded_apps": excluded,
     }
 
+    external_raw = raw.get("show_external_storage", current.get("show_external_storage", False))
+    show_external_storage = external_raw is True or str(external_raw).strip().lower() in {"1", "true", "yes", "on"}
+
     return {
         "version": 3,
+        "show_external_storage": show_external_storage,
         "backup_mode": backup_mode,
         "one_time_completed_at": one_time_completed_at,
         "one_time_timestamp": one_time_timestamp,
@@ -774,6 +781,21 @@ def _validate_settings(raw: dict) -> dict:
         "retention": retention,
         "storage": storage,
         "apps": apps,
+    }
+
+
+@frappe.whitelist(methods=["POST"])
+def save_external_storage_visibility(enabled: bool = False):
+    """Save the per-site visibility preference without changing backup schedules."""
+    _require_manager()
+    visible = enabled is True or str(enabled).strip().lower() in {"1", "true", "yes", "on"}
+    settings = _get_settings()
+    settings["show_external_storage"] = visible
+    settings["version"] = 3
+    _save_settings(settings)
+    return {
+        "show_external_storage": visible,
+        "message": "تم حفظ إعداد ظهور التخزين والربط الخارجي لهذا الموقع فقط.",
     }
 
 
