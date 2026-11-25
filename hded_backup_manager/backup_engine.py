@@ -473,7 +473,12 @@ def list_backup_sets(backup_dir: Path, site_prefix: str) -> list[dict[str, Any]]
     return sorted(result, key=lambda row: row["timestamp"], reverse=True)
 
 
-def retention_plan(backup_dir: Path, site_prefix: str, retention: dict[str, Any]) -> dict[str, Any]:
+def retention_plan(
+    backup_dir: Path,
+    site_prefix: str,
+    retention: dict[str, Any],
+    protected_timestamps: set[str] | None = None,
+) -> dict[str, Any]:
     sets = [row for row in list_backup_sets(backup_dir, site_prefix) if row["complete"] and set(row["files"]) == {"database.sql.gz"}]
     keep: set[str] = set()
 
@@ -497,6 +502,8 @@ def retention_plan(backup_dir: Path, site_prefix: str, retention: dict[str, Any]
     if sets and not keep:
         keep.add(sets[0]["timestamp"])
 
+    protected = protected_timestamps or set()
+    keep.update(timestamp for timestamp in protected if re.fullmatch(r"\d{8}_\d{6}", timestamp))
     delete_rows = [row for row in sets if row["timestamp"] not in keep]
     # Incomplete sets are intentionally preserved and are never retention candidates.
     incomplete_count = sum(1 for row in list_backup_sets(backup_dir, site_prefix) if not row["complete"])
@@ -517,8 +524,13 @@ def retention_plan(backup_dir: Path, site_prefix: str, retention: dict[str, Any]
     }
 
 
-def apply_retention(backup_dir: Path, site_prefix: str, retention: dict[str, Any]) -> dict[str, Any]:
-    plan = retention_plan(backup_dir, site_prefix, retention)
+def apply_retention(
+    backup_dir: Path,
+    site_prefix: str,
+    retention: dict[str, Any],
+    protected_timestamps: set[str] | None = None,
+) -> dict[str, Any]:
+    plan = retention_plan(backup_dir, site_prefix, retention, protected_timestamps=protected_timestamps)
     root = backup_dir.resolve(strict=True)
     deleted: list[str] = []
 
