@@ -832,12 +832,24 @@ def _settings_from_request(settings_json: str | None) -> dict:
     return _validate_settings(raw)
 
 
+def _pending_drive_timestamps() -> set[str]:
+    try:
+        from hded_backup_manager.google_drive import pending_timestamps
+
+        return pending_timestamps()
+    except Exception as exc:
+        frappe.log_error(title="HDED Google Drive Pending Uploads", message=frappe.get_traceback())
+        frappe.throw(_("تعذر قراءة قائمة النسخ المعلقة للرفع السحابي؛ أُوقفت سياسة الحذف لحماية النسخ: {0}").format(str(exc)[:200]))
+
 @frappe.whitelist()
 def preview_retention(settings_json: str | None = None):
     _require_manager()
     settings = _settings_from_request(settings_json)
     directory = _backup_dir(settings)
-    plan = retention_plan(directory, _site_prefix(), settings["retention"])
+    plan = retention_plan(
+        directory, _site_prefix(), settings["retention"],
+        protected_timestamps=_pending_drive_timestamps(),
+    )
     return {
         "directory": str(directory),
         "keep_count": len(plan["keep"]),
@@ -855,7 +867,11 @@ def preview_retention(settings_json: str | None = None):
 def apply_retention_now(settings_json: str | None = None, expected_timestamps: str | None = None):
     _require_manager()
     settings = _settings_from_request(settings_json)
-    plan = retention_plan(_backup_dir(settings), _site_prefix(), settings["retention"])
+    protected = _pending_drive_timestamps()
+    plan = retention_plan(
+        _backup_dir(settings), _site_prefix(), settings["retention"],
+        protected_timestamps=protected,
+    )
     if not plan["delete"]:
         return {"message": "لا توجد نسخ مكتملة زائدة للحذف", "deleted_count": 0}
     try:
@@ -865,7 +881,10 @@ def apply_retention_now(settings_json: str | None = None, expected_timestamps: s
     current = {row["timestamp"] for row in plan["delete"]}
     if expected != current:
         frappe.throw(_("تغيرت قائمة النسخ المرشحة للحذف منذ المعاينة. أعد المعاينة قبل الحذف."))
-    result = apply_retention(_backup_dir(settings), _site_prefix(), settings["retention"])
+    result = apply_retention(
+        _backup_dir(settings), _site_prefix(), settings["retention"],
+        protected_timestamps=protected,
+    )
     return {
         "message": "اكتمل تطبيق سياسة الاحتفاظ. لم تُحذف النسخ غير المكتملة.",
         "deleted_count": result["deleted_count"],
