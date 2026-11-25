@@ -92,6 +92,8 @@ def main() -> int:
         flush=True,
     )
 
+    pending_drive_timestamps: set[str] = set()
+
     # Cloud upload is deliberately isolated from local backup success: a
     # Google outage must never turn a valid local database backup into failure.
     try:
@@ -99,12 +101,13 @@ def main() -> int:
 
         frappe.init(site=args.site, sites_path=str(BENCH_DIR / "sites"))
         try:
-            from hded_backup_manager.google_drive import process_backup_uploads
+            from hded_backup_manager.google_drive import pending_timestamps, process_backup_uploads
 
             cloud_result = process_backup_uploads(
                 database_path,
                 site_path=site_path,
             )
+            pending_drive_timestamps = pending_timestamps(site_path)
             if cloud_result.get("enabled"):
                 print(
                     "[HDED] Google Drive upload: "
@@ -132,10 +135,16 @@ def main() -> int:
     retention = settings.get("retention", {})
     if retention.get("auto_apply", False):
         print("[HDED] Applying configured database-backup retention policy", flush=True)
-        result = apply_retention(backup_dir, prefix, retention)
+        result = apply_retention(
+            backup_dir,
+            prefix,
+            retention,
+            protected_timestamps=pending_drive_timestamps,
+        )
         print(
             f"[HDED] Retention removed {result['deleted_count']} files; "
-            f"incomplete backup sets preserved: {result['incomplete_preserved']}",
+            f"incomplete backup sets preserved: {result['incomplete_preserved']}; "
+            f"Drive-pending backups protected: {len(pending_drive_timestamps)}",
             flush=True,
         )
 
