@@ -84,6 +84,7 @@ class BackupDirectoryTests(unittest.TestCase):
 
     def test_external_storage_tab_is_hidden_by_default_and_persisted_per_site(self) -> None:
         path = self.site / "private" / "hded_backup_manager_settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
         settings = read_settings(path)
         self.assertFalse(settings["show_external_storage"])
         settings["show_external_storage"] = True
