@@ -60,7 +60,7 @@ class HDEDBBackupManager {
             <nav class="backup-tabs" role="tablist" aria-label="أقسام مدير النسخ الاحتياطي">
               <button type="button" class="backup-tab-button tab-dashboard active" role="tab" aria-selected="true" aria-controls="backup-panel-dashboard" data-tab="dashboard">${this.icon("dashboard", "nav")}<span>لوحة التحكم</span></button>
               <button type="button" class="backup-tab-button tab-settings" role="tab" aria-selected="false" aria-controls="backup-panel-settings" data-tab="settings">${this.icon("settings", "nav")}<span>إعدادات النسخ</span></button>
-              <button type="button" class="backup-tab-button tab-external" role="tab" aria-selected="false" aria-controls="backup-panel-external" data-tab="external">${this.icon("cloud", "nav")}<span>التخزين والربط الخارجي</span></button>
+              <button type="button" class="backup-tab-button tab-external" role="tab" aria-selected="false" aria-controls="backup-panel-external" data-tab="external" hidden aria-hidden="true">${this.icon("cloud", "nav")}<span>التخزين والربط الخارجي</span></button>
             </nav>
 
             <div id="backup-panel-dashboard" class="backup-tab-panel active" data-panel="dashboard" role="tabpanel">
@@ -93,6 +93,12 @@ class HDEDBBackupManager {
                 </div>
                 <div class="local-storage-actions"><button type="button" class="btn btn-default" id="backup-path-test">${this.icon("shield")} فحص المسار وإمكانية الكتابة</button><button type="button" class="btn btn-primary" id="backup-storage-save">حفظ مسار التخزين فقط</button><span id="backup-path-status" class="muted" aria-live="polite"></span></div>
                 <p class="muted">هذا مسار على خادم Ubuntu وليس على جهاز المتصفح. الفحص ينشئ المجلد عند الحاجة ويتأكد من صلاحيات الحماية والمساحة المتاحة. عند تغيير المسار لا تُنقل النسخ القديمة أو تُحذف؛ يحتفظ التطبيق بسجل لمسارات التخزين السابقة ويعرض نسخها كمجلد سابق.</p>
+              </section>
+              <section class="backup-panel external-visibility-panel">
+                <div class="panel-heading"><h3>إظهار التخزين والربط الخارجي</h3><span class="muted">إعداد مستقل لهذا الموقع</span></div>
+                <label class="switch-label"><input type="checkbox" id="show-external-storage"> إظهار تبويب النسخ السحابي والتخزين والربط الخارجي على هذا الخادم</label>
+                <p class="muted">يكون التبويب مخفياً افتراضياً على الخوادم الجديدة، ولا يظهر لمجرد تنزيل تحديثات التطبيق. هذا الخيار لا يغيّر النسخ المحلية أو مواعيدها.</p>
+                <div class="local-storage-actions"><button type="button" class="btn btn-default" id="save-external-storage-visibility">حفظ إعداد الظهور</button><span id="external-storage-visibility-status" class="muted" aria-live="polite"></span></div>
               </section>
               <section class="backup-panel backup-mode-panel">
                 <div class="panel-heading"><h3>نمط الحفظ</h3><span class="muted">اختر طريقة تكرار النسخ</span></div>
@@ -204,6 +210,7 @@ class HDEDBBackupManager {
         this.body.find("#backup-local-path").on("input change", () => this.refreshPrimaryAction());
         this.body.find("#backup-require-mount").on("change", () => this.refreshPrimaryAction());
         this.body.find("#backup-storage-save").on("click", () => this.saveStorageSettings());
+        this.body.find("#save-external-storage-visibility").on("click", () => this.saveExternalStorageVisibility());
         this.body.find("#preview-retention").on("click", () => this.previewRetention());
         this.body.find("#apply-retention").on("click", () => this.applyRetention());
         this.body.find(".email-connect-button").on("click", (event) => this.openEmailConnection($(event.currentTarget).attr("data-email-provider")));
@@ -223,6 +230,7 @@ class HDEDBBackupManager {
     showTab(name) {
         const allowed = ["dashboard", "settings", "external"];
         if (!allowed.includes(name)) return;
+        if (name === "external" && !(this.currentBackupSettings || {}).show_external_storage) return;
 
         this.body.find(".backup-tab-button").each((_, element) => {
             const button = $(element);
@@ -247,8 +255,6 @@ class HDEDBBackupManager {
         this.showAlert("جارٍ تحديث معلومات النسخ الاحتياطي...", "info");
         try {
             const data = await this.call("get_dashboard");
-            try { data.google_drive = await this.call("get_google_drive_status"); }
-            catch (driveError) { data.google_drive = data.google_drive || {}; }
             this.renderData(data);
             this.hideAlert();
         } catch (error) {
@@ -259,6 +265,11 @@ class HDEDBBackupManager {
     renderData(data) {
         const summary = data.summary || {}, status = data.status || {}, settings = data.settings || {};
         this.currentBackupSettings = settings;
+        const showExternalStorage = settings.show_external_storage === true;
+        const externalTab = this.body.find('.backup-tab-button[data-tab="external"]');
+        externalTab.prop("hidden", !showExternalStorage).attr("aria-hidden", showExternalStorage ? "false" : "true");
+        this.body.find("#show-external-storage").prop("checked", showExternalStorage);
+        if (!showExternalStorage && externalTab.hasClass("active")) this.showTab("dashboard");
         const schedule = settings.schedule || {}, retention = settings.retention || {};
         this.body.find("#backup-count").text(summary.backup_count ?? 0);
         this.body.find("#backup-complete").text(summary.complete_count ?? 0);
@@ -730,12 +741,31 @@ class HDEDBBackupManager {
         );
     }
 
+    async saveExternalStorageVisibility() {
+        const enabled = this.body.find("#show-external-storage").is(":checked");
+        const status = this.body.find("#external-storage-visibility-status");
+        status.text("جارٍ حفظ إعداد الظهور...").removeClass("text-danger text-success");
+        try {
+            const result = await this.call("save_external_storage_visibility", { enabled });
+            this.currentBackupSettings = { ...(this.currentBackupSettings || {}), show_external_storage: enabled };
+            const tab = this.body.find('.backup-tab-button[data-tab="external"]');
+            tab.prop("hidden", !enabled).attr("aria-hidden", enabled ? "false" : "true");
+            if (!enabled && tab.hasClass("active")) this.showTab("dashboard");
+            status.text(enabled ? "تم إظهار التبويب على هذا الخادم." : "تم إخفاء التبويب على هذا الخادم.").addClass("text-success");
+            this.showAlert(result.message || "تم حفظ إعداد الظهور.", "success");
+        } catch (error) {
+            status.text("تعذر حفظ إعداد الظهور.").addClass("text-danger");
+            this.showAlert("تعذر حفظ إعداد الظهور. راجع سجل Frappe.", "danger");
+        }
+    }
+
     collectSettings() {
         return {
             storage: {
                 local_path: (this.body.find("#backup-local-path").val() || "").trim(),
                 require_mount: this.body.find("#backup-require-mount").is(":checked"),
             },
+            show_external_storage: this.body.find("#show-external-storage").is(":checked"),
             backup_mode: this.body.find("#backup-mode").val() || "scheduled",
             schedule_enabled: (this.body.find("#backup-mode").val() || "scheduled") === "scheduled",
             schedule: {
