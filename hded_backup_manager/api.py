@@ -560,6 +560,16 @@ def get_dashboard():
         directory = Path(configured_path).expanduser() if configured_path else Path(frappe.get_site_path("private", "backups"))
     backups = _dashboard_backups(settings)
     status = _system_status()
+    try:
+        from hded_backup_manager.google_drive import public_status as _google_drive_status
+
+        google_drive_status = _google_drive_status()
+    except Exception as exc:
+        frappe.log_error(title="HDED Google Drive Status", message=str(exc))
+        google_drive_status = {
+            "configured": False, "connected": False, "auto_upload": False,
+            "pending_count": 0, "last_error": "تعذر قراءة حالة Google Drive",
+        }
     storage_info = backup_directory_details(directory) if directories.get("active") is not None else None
     previous_directories = [str(path) for key, path in directories.items() if key.startswith("previous_") and path is not None]
     total_bytes = sum(item["total_size"] for item in backups)
@@ -568,6 +578,7 @@ def get_dashboard():
         "settings": settings,
         "apps": _apps_for_ui(settings),
         "email_connections": _email_connections_for_ui(),
+        "google_drive": google_drive_status,
         "summary": {
             "backup_count": len(backups),
             "complete_count": sum(1 for item in backups if item["complete"]),
@@ -948,6 +959,195 @@ def start_restore(timestamp: str, storage: str = "active"):
     log_stream.close()
     status_payload["pid"] = process.pid
     return {"message": "بدأت عملية الاستعادة الآمنة. ستُنشأ نسخة أمان أولاً، ثم يبدأ الاستبدال."}
+
+
+
+
+@frappe.whitelist(methods=["POST"])
+def save_google_drive_settings(
+    client_id: str,
+    client_secret: str | None = None,
+    redirect_uri: str = "",
+    folder_name: str = "HDED ERP Backups",
+    auto_upload: bool = False,
+):
+    _require_manager()
+    enabled = auto_upload if isinstance(auto_upload, bool) else str(auto_upload).strip().lower() in {"1", "true", "yes", "on"}
+    try:
+        from hded_backup_manager.google_drive import save_oauth_settings
+
+        status = save_oauth_settings(
+            client_id=client_id,
+            client_secret=client_secret or "",
+            redirect_uri=redirect_uri,
+            folder_name=folder_name,
+            auto_upload=enabled,
+        )
+    except Exception as exc:
+        frappe.throw(_("تعذر حفظ إعدادات Google Drive: {0}").format(str(exc)[:400]))
+    return {"message": "تم حفظ إعدادات Google Drive المشفّرة على الخادم.", "status": status}
+
+
+@frappe.whitelist()
+def get_google_drive_status():
+    _require_manager()
+    from hded_backup_manager.google_drive import public_status, CALLBACK_PATH
+
+    status = public_status()
+    status["suggested_redirect_uri"] = frappe.utils.get_url(CALLBACK_PATH)
+    return status
+
+
+@frappe.whitelist(methods=["POST"])
+def begin_google_drive_oauth():
+    _require_manager()
+    try:
+        from hded_backup_manager.google_drive import begin_oauth
+
+        return {"authorization_url": begin_oauth()}
+    except Exception as exc:
+        frappe.throw(_("تعذر بدء ربط Google Drive: {0}").format(str(exc)[:400]))
+
+
+@frappe.whitelist(allow_guest=True)
+def google_drive_oauth_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    """Google OAuth redirect endpoint. The one-time state is verified before exchanging credentials."""
+    target = "/app/backup-manager"
+    try:
+        if error:
+            raise RuntimeError("تم إلغاء تفويض Google أو رفض الطلب.")
+        if not code or not state:
+            raise RuntimeError("لم يرسل Google رمز التفويض أو قيمة التحقق.")
+        from hded_backup_manager.google_drive import complete_oauth
+
+        complete_oauth(code=code, state=state)
+        target += "?google_drive=connected"
+    except Exception as exc:
+        frappe.log_error(title="HDED Google Drive OAuth", message=str(exc))
+        target += "?google_drive=error"
+    frappe.local.response["type"] = "redirect"
+    frappe.local.response["location"] = target
+
+
+@frappe.whitelist(methods=["POST"])
+def test_google_drive_connection():
+    _require_manager()
+    try:
+        from hded_backup_manager.google_drive import test_connection
+
+        return test_connection()
+    except Exception as exc:
+        frappe.throw(_("فشل اختبار اتصال Google Drive: {0}").format(str(exc)[:400]))
+
+
+@frappe.whitelist(methods=["POST"])
+def disconnect_google_drive():
+    _require_manager()
+    from hded_backup_manager.google_drive import disconnect
+
+    disconnect()
+    return {"message": "تم فصل حساب Google Drive. لم تُحذف النسخ الموجودة في Drive."}
+
+
+@frappe.whitelist()
+def list_google_drive_backups():
+    _require_manager()
+    try:
+        from hded_backup_manager.google_drive import list_drive_backups
+
+        return {"backups": list_drive_backups()}
+    except Exception as exc:
+        frappe.throw(_("تعذر استعراض نسخ Google Drive: {0}").format(str(exc)[:400]))
+
+
+@frappe.whitelist(methods=["POST"])
+def retry_google_drive_uploads():
+    _require_manager()
+    try:
+        frappe.enqueue(
+            "hded_backup_manager.google_drive.retry_pending_uploads",
+            queue="long",
+            timeout=60 * 60,
+        )
+    except Exception as exc:
+        frappe.throw(_("تعذر جدولة إعادة رفع النسخ المعلقة: {0}").format(str(exc)[:300]))
+    return {"message": "تمت جدولة إعادة محاولة رفع النسخ المعلقة إلى Google Drive."}
+
+
+@frappe.whitelist(methods=["POST"])
+def start_restore_from_drive(file_id: str):
+    """Start a safety-backed database restore from a backup stored in the configured Drive folder."""
+    _require_manager()
+    if not isinstance(file_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", file_id):
+        frappe.throw(_("معرّف ملف Google Drive غير صالح"))
+
+    try:
+        from hded_backup_manager.google_drive import list_drive_backups
+
+        remote = next((item for item in list_drive_backups() if item.get("file_id") == file_id), None)
+    except Exception as exc:
+        frappe.throw(_("تعذر التحقق من نسخة Google Drive: {0}").format(str(exc)[:300]))
+    if not remote:
+        frappe.throw(_("النسخة المحددة غير موجودة داخل مجلد HDED في Google Drive"))
+
+    status_path = _restore_status_path()
+    current = {}
+    try:
+        current = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        pass
+    if current.get("status") in {"starting", "running"}:
+        frappe.throw(_("توجد عملية استعادة أخرى قيد التنفيذ. انتظر حتى تنتهي."))
+
+    if _system_status().get("service_active"):
+        frappe.throw(_("توجد عملية نسخ احتياطي قيد التنفيذ. انتظر حتى تنتهي قبل الاستعادة."))
+
+    app_package = Path(frappe.get_app_path("hded_backup_manager")).resolve(strict=True)
+    runner = app_package.parent / "scripts" / "restore_runner.py"
+    python = _bench_dir() / "env" / "bin" / "python"
+    if not runner.is_file() or not python.is_file():
+        frappe.throw(_("ملف تشغيل الاستعادة أو بيئة Python غير موجودة"))
+
+    log_path = Path(frappe.get_site_path("private", "hded_backup_restore.log"))
+    status_payload = {
+        "status": "starting",
+        "message": "تم التحقق من النسخة السحابية. سيُنزلها النظام ثم ينشئ نسخة أمان قبل الاستعادة.",
+        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "source": remote.get("name"),
+        "source_type": "google_drive",
+        "drive_file_id": file_id,
+    }
+    status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.chmod(status_path, 0o600)
+    log_stream = open(log_path, "ab", buffering=0)
+    os.chmod(log_path, 0o600)
+    try:
+        process = subprocess.Popen(
+            [
+                str(python), str(runner),
+                "--site", frappe.local.site,
+                "--drive-file-id", file_id,
+                "--status-file", str(status_path),
+            ],
+            cwd=str(_bench_dir()),
+            stdin=subprocess.DEVNULL,
+            stdout=log_stream,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            close_fds=True,
+            env={
+                **os.environ,
+                "PATH": f"{_bench_dir() / 'env' / 'bin'}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            },
+        )
+    except Exception:
+        log_stream.close()
+        status_payload.update({"status": "failed", "message": "تعذر تشغيل عملية الاستعادة من Google Drive."})
+        status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        raise
+    log_stream.close()
+    status_payload["pid"] = process.pid
+    return {"message": "بدأت الاستعادة من Google Drive. سيُنزل الملف أولاً ثم تُنشأ نسخة أمان محلية."}
 
 
 @frappe.whitelist()
