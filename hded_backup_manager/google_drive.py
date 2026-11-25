@@ -179,6 +179,7 @@ def public_status() -> dict:
     pending = config.get("pending_uploads") or []
     return {
         "configured": bool(config.get("client_id") and config.get("client_secret_enc") and config.get("redirect_uri")),
+        "client_id": config.get("client_id") or "",
         "connected": connected,
         "auto_upload": bool(config.get("auto_upload")),
         "folder_name": config.get("folder_name") or "HDED ERP Backups",
@@ -404,18 +405,21 @@ def _resumable_upload(path: Path, folder_id: str, token: str, digest: str) -> di
 
     offset = 0
     completed = None
+    no_progress_count = 0
     with path.open("rb") as stream:
         while offset < size:
             stream.seek(offset)
             chunk = stream.read(min(CHUNK_SIZE, size - offset))
             if not chunk:
                 raise RuntimeError("انتهى ملف النسخة قبل اكتمال الرفع.")
-            end = offset + len(chunk) - 1
+            start = offset
+            end = start + len(chunk) - 1
             headers = {
                 "Content-Length": str(len(chunk)),
-                "Content-Range": f"bytes {offset}-{end}/{size}",
+                "Content-Range": f"bytes {start}-{end}/{size}",
                 "Content-Type": "application/gzip",
             }
+            advanced = False
             for attempt in range(MAX_RETRIES):
                 try:
                     uploaded = requests.put(session_uri, data=chunk, headers=headers, timeout=(30, 300))
@@ -434,8 +438,15 @@ def _resumable_upload(path: Path, folder_id: str, token: str, digest: str) -> di
                         break
                     if probe.status_code == 308:
                         received = probe.headers.get("Range", "")
-                        offset = int(received.rsplit("-", 1)[1]) + 1 if received else 0
-                        break
+                        new_offset = int(received.rsplit("-", 1)[1]) + 1 if received else 0
+                        if new_offset > offset and new_offset <= size:
+                            offset = new_offset
+                            advanced = True
+                            break
+                        no_progress_count += 1
+                        if no_progress_count >= 3:
+                            raise RuntimeError("لم يتقدم رفع Google Drive بعد عدة محاولات؛ ستتم إعادة المحاولة في تشغيل النسخ التالي.")
+                        continue
                     if probe.status_code == 404:
                         raise RuntimeError("انتهت صلاحية جلسة الرفع. أعد محاولة الرفع.")
                     continue
@@ -444,19 +455,23 @@ def _resumable_upload(path: Path, folder_id: str, token: str, digest: str) -> di
                     break
                 if uploaded.status_code == 308:
                     received = uploaded.headers.get("Range", "")
-                    offset = int(received.rsplit("-", 1)[1]) + 1 if received else 0
-                    break
+                    new_offset = int(received.rsplit("-", 1)[1]) + 1 if received else 0
+                    if new_offset > offset and new_offset <= size:
+                        offset = new_offset
+                        advanced = True
+                        break
+                    no_progress_count += 1
+                    if no_progress_count >= 3:
+                        raise RuntimeError("لم يتقدم رفع Google Drive بعد عدة محاولات؛ ستتم إعادة المحاولة في تشغيل النسخ التالي.")
+                    continue
                 if uploaded.status_code >= 500 and attempt + 1 < MAX_RETRIES:
                     time.sleep(min(2 ** attempt, 16))
                     continue
                 raise RuntimeError(f"توقف رفع Google Drive (HTTP {uploaded.status_code}).")
             if completed:
                 break
-            if offset <= end:
-                # A 308 response without a Range header means Google received no bytes.
-                offset = max(offset, 0)
-                if offset == 0 and end >= 0:
-                    continue
+            if offset == start and not advanced:
+                raise RuntimeError("تعذر استكمال رفع Google Drive بعد عدة محاولات.")
             if offset > size:
                 raise RuntimeError("أبلغ Google عن موضع رفع غير صالح.")
     if not completed:
