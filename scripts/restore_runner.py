@@ -80,6 +80,21 @@ def restore_database_dump(site: str, dump_file: Path) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Safely restore an HDED database-only backup")
+    parser.add_argument("--site", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--backup-file")
+    source.add_argument("--drive-file-id")
+    parser.add_argument("--status-file", required=True)
+    args = parser.parse_args()
+
+    # Resolve a possibly relative status path before changing the working
+    # directory; the API may pass it relative to the bench root.
+    status_path = Path(args.status_file)
+    if not status_path.is_absolute():
+        status_path = (Path.cwd() / status_path).resolve()
+    args.status_file = str(status_path)
+
     # Frappe's file logger resolves "../logs" and "<site>/logs" relative
     # to the process working directory. Its expected working directory is
     # the bench "sites" directory, not the bench root.
@@ -88,14 +103,6 @@ def main() -> int:
         raise RuntimeError(f"Bench sites directory does not exist: {sites_dir}")
     os.chdir(sites_dir)
     (BENCH_DIR / "logs").mkdir(parents=True, exist_ok=True)
-
-    parser = argparse.ArgumentParser(description="Safely restore an HDED database-only backup")
-    parser.add_argument("--site", required=True)
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--backup-file")
-    source.add_argument("--drive-file-id")
-    parser.add_argument("--status-file", required=True)
-    args = parser.parse_args()
 
     site = args.site
     site_path = BENCH_DIR / "sites" / site
