@@ -398,6 +398,9 @@ def _resumable_upload(path: Path, folder_id: str, token: str, digest: str) -> di
     session_uri = response.headers.get("Location")
     if not session_uri:
         raise RuntimeError("لم يُرجع Google عنوان جلسة الرفع القابلة للاستئناف.")
+    parsed_session = urlparse(session_uri)
+    if parsed_session.scheme != "https" or parsed_session.hostname not in {"www.googleapis.com", "upload.googleapis.com"}:
+        raise RuntimeError("أعاد Google عنوان جلسة رفع غير موثوق؛ أُوقف الرفع لحماية النسخة.")
 
     offset = 0
     completed = None
@@ -475,10 +478,10 @@ def upload_file(path: str | Path, site_path: Path | None = None) -> dict:
     existing = _find_existing(backup.name, folder_id)
     if existing:
         properties = existing.get("appProperties") or {}
-        if properties.get("sha256") == digest or not properties:
+        if properties.get("sha256") == digest and int(existing.get("size") or 0) == size:
             result = existing
         else:
-            raise RuntimeError("توجد نسخة بالاسم نفسه في Google Drive لكن بصمة محتواها مختلفة.")
+            raise RuntimeError("يوجد ملف بالاسم نفسه في Google Drive لا يمكن تأكيد تطابق بصمته؛ لم تتم الكتابة فوقه.")
     else:
         result = _resumable_upload(backup, folder_id, _access_token(), digest)
     uploaded = {
@@ -644,3 +647,45 @@ def download_drive_backup(file_id: str, destination: Path) -> dict:
         destination.unlink(missing_ok=True)
         raise RuntimeError("فشل فحص بصمة النسخة بعد تنزيلها من Google Drive.")
     return {"name": name, "size": written, "sha256": digest.hexdigest(), "file_id": file_id}
+
+
+
+def disconnect() -> None:
+    config = _read_raw()
+    config["refresh_token_enc"] = ""
+    config["folder_id"] = ""
+    config["connected_at"] = None
+    config["auto_upload"] = False
+    config["last_error"] = ""
+    config["pending_uploads"] = []
+    _write(config)
+
+
+def retry_pending_uploads(site_path: Path | None = None) -> dict:
+    config = _read_raw(site_path)
+    if not config.get("refresh_token_enc"):
+        raise RuntimeError("حساب Google Drive غير مربوط.")
+    queue = list(config.get("pending_uploads") or [])
+    completed = 0
+    for item in queue:
+        path = Path(str(item.get("path") or ""))
+        if path.is_symlink() or not path.is_file() or not BACKUP_RE.fullmatch(path.name):
+            config = _read_raw(site_path)
+            config["pending_uploads"] = [row for row in config.get("pending_uploads", []) if row.get("name") != item.get("name")]
+            config["last_error"] = f"ملف النسخة المعلق غير متاح: {item.get('name', '')}"
+            _write(config, site_path)
+            continue
+        try:
+            upload_file(path, site_path)
+            completed += 1
+        except Exception as exc:
+            config = _read_raw(site_path)
+            config["last_error"] = str(exc)[:500]
+            _write(config, site_path)
+            break
+    final = _read_raw(site_path)
+    return {
+        "uploaded": completed,
+        "pending": len(final.get("pending_uploads") or []),
+        "last_error": str(final.get("last_error") or "")[:500],
+    }
