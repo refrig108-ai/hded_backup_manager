@@ -189,7 +189,7 @@ EOF
     trap - EXIT
 
     TIMER_CREATED=1
-    echo "New timer created with initial time $INITIAL_TIME."
+    echo "New timer unit created with placeholder time $INITIAL_TIME; it remains DISABLED."
 else
     echo "Existing timer preserved without changing its schedule."
 fi
@@ -219,14 +219,14 @@ echo "Restricted sudo permission installed."
 systemctl daemon-reload
 
 if [[ "$TIMER_CREATED" == "1" ]]; then
-    systemctl enable --now "$TIMER_NAME"
+    echo "Automatic backups are not scheduled yet. Configure and save a schedule in /app/backup-manager."
 elif [[ "$TIMER_WAS_ACTIVE" == "active" ]] && ! systemctl is-active --quiet "$TIMER_NAME"; then
     systemctl start "$TIMER_NAME"
 fi
 
 echo
 echo "HDED Backup Manager system integration completed."
-echo "Existing timer configuration and enabled/disabled state were preserved."
+echo "Existing timer configuration and enabled/disabled state were preserved. New timers are left disabled until configured in the app."
 echo
 
 systemctl is-active "$TIMER_NAME" 2>/dev/null || true
