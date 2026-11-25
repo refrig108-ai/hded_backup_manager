@@ -589,3 +589,96 @@
 .hded-storage-dialog .storage-folder-up .backup-icon-svg,.hded-storage-dialog .storage-back-volumes .backup-icon-svg,.hded-storage-dialog .storage-folder-choose .backup-icon-svg { width:13px; height:13px; }
 .hded-storage-dialog .storage-browser-current { padding:8px 10px; gap:3px; }
 .hded-storage-dialog .storage-browser-toolbar .btn,.hded-storage-dialog .storage-browser-select .btn { min-height:30px; padding:5px 9px; font-size:12px; }
+
+
+/* Google Drive OAuth and remote-backup controls (v0.4) */
+.hded-backup-manager .google-drive-status {
+    margin: 10px 0 15px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+    background: var(--control-bg, #fff);
+    font-size: 13px;
+    font-weight: 650;
+}
+.hded-backup-manager .google-drive-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    gap: 13px;
+    margin: 14px 0;
+}
+.hded-backup-manager .google-drive-form label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-muted, #73808c);
+    font-size: 12px;
+}
+.hded-backup-manager .google-drive-form input[type="text"],
+.hded-backup-manager .google-drive-form input[type="password"],
+.hded-backup-manager .google-drive-form input[type="url"] {
+    min-width: 0;
+    direction: ltr;
+    text-align: left;
+}
+.hded-backup-manager .google-drive-wide,
+.hded-backup-manager .google-drive-check {
+    grid-column: 1 / -1;
+}
+.hded-backup-manager .google-drive-check label {
+    color: var(--text-color, #25313c);
+    font-size: 13px;
+}
+.hded-backup-manager .google-drive-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+}
+.hded-backup-manager .google-drive-actions .btn {
+    min-height: 36px;
+    padding: 7px 11px;
+    font-size: 12px;
+}
+.hded-backup-manager .google-drive-help {
+    margin-top: 14px;
+    line-height: 1.8;
+}
+.hded-backup-manager .google-drive-meta {
+    margin-top: 12px;
+    color: var(--text-muted, #73808c);
+    font-size: 12px;
+    line-height: 1.8;
+    overflow-wrap: anywhere;
+}
+.hded-backup-manager .google-drive-table {
+    width: 100%;
+    margin: 0;
+}
+.hded-backup-manager .google-drive-table th,
+.hded-backup-manager .google-drive-table td {
+    text-align: right;
+    vertical-align: middle;
+}
+.hded-backup-manager .google-drive-table td:first-child {
+    overflow-wrap: anywhere;
+}
+.hded-backup-manager .google-drive-table .btn {
+    white-space: nowrap;
+}
+@media (max-width: 680px) {
+    .hded-backup-manager .google-drive-form {
+        grid-template-columns: 1fr;
+    }
+    .hded-backup-manager .google-drive-wide,
+    .hded-backup-manager .google-drive-check {
+        grid-column: auto;
+    }
+    .hded-backup-manager .google-drive-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .hded-backup-manager .google-drive-actions .btn {
+        width: 100%;
+    }
+}
