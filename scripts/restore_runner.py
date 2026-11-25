@@ -5,6 +5,7 @@ import argparse
 import gzip
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -81,13 +82,55 @@ def restore_database_dump(site: str, dump_file: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Safely restore an HDED database-only backup")
     parser.add_argument("--site", required=True)
-    parser.add_argument("--backup-file", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--backup-file")
+    source.add_argument("--drive-file-id")
     parser.add_argument("--status-file", required=True)
     args = parser.parse_args()
 
     site = args.site
     site_path = BENCH_DIR / "sites" / site
-    backup_file = Path(args.backup_file)
+    backup_file: Path
+    staged_drive_file = False
+    if args.drive_file_id:
+        try:
+            import frappe
+
+            frappe.init(site=site, sites_path=str(BENCH_DIR / "sites"))
+            try:
+                from hded_backup_manager.google_drive import download_drive_backup, list_drive_backups
+
+                remote = next(
+                    (item for item in list_drive_backups() if item.get("file_id") == args.drive_file_id),
+                    None,
+                )
+                if not remote:
+                    raise RuntimeError("الملف غير موجود داخل مجلد HDED المصرح به في Google Drive.")
+                drive_name = str(remote.get("name") or "")
+                if not re.fullmatch(r"\d{8}_\d{6}-[A-Za-z0-9_]+-database\.sql\.gz", drive_name):
+                    raise RuntimeError("اسم ملف النسخة السحابية غير صالح.")
+                staging_dir = site_path / "private" / "drive_restore_staging"
+                staging_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+                if staging_dir.is_symlink() or staging_dir.resolve(strict=True) != staging_dir:
+                    raise RuntimeError("مجلد الاستعادة المؤقت من Google Drive غير آمن.")
+                os.chmod(staging_dir, 0o700)
+                backup_file = staging_dir / drive_name
+                write_status(
+                    Path(args.status_file),
+                    "running",
+                    "جارٍ تنزيل نسخة قاعدة البيانات من Google Drive والتحقق من بصمتها.",
+                    source=drive_name,
+                    source_type="google_drive",
+                )
+                download_drive_backup(args.drive_file_id, backup_file)
+                staged_drive_file = True
+            finally:
+                frappe.destroy()
+        except Exception as exc:
+            write_status(Path(args.status_file), "failed", f"تعذر تنزيل نسخة Google Drive: {str(exc)[:400]}")
+            return 2
+    else:
+        backup_file = Path(args.backup_file)
     status_file = Path(args.status_file)
     bench = Path.home() / ".local" / "bin" / "bench"
     if not bench.is_file():
@@ -175,6 +218,8 @@ def main() -> int:
             safety_backup=str(safety_file),
             restored_from=str(backup_file),
         )
+        if staged_drive_file:
+            backup_file.unlink(missing_ok=True)
         return 0
 
     except Exception as exc:
