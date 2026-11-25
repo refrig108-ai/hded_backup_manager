@@ -698,7 +698,7 @@ def _validate_settings(raw: dict) -> dict:
     storage_raw = raw.get("storage") or current_storage or {}
     storage = _validate_storage_settings(storage_raw, current_storage)
 
-    schedule_enabled = bool(raw.get("schedule_enabled", current.get("schedule_enabled", True)))
+    schedule_enabled = bool(raw.get("schedule_enabled", current.get("schedule_enabled", False)))
     if backup_mode == "one_time":
         schedule_enabled = False
     schedule_raw = raw.get("schedule") or {}
