@@ -82,6 +82,14 @@ class BackupDirectoryTests(unittest.TestCase):
         self.assertEqual(settings["backup_mode"], "scheduled")
         self.assertIsNone(settings["one_time_completed_at"])
 
+    def test_external_storage_tab_is_hidden_by_default_and_persisted_per_site(self) -> None:
+        path = self.site / "private" / "hded_backup_manager_settings.json"
+        settings = read_settings(path)
+        self.assertFalse(settings["show_external_storage"])
+        settings["show_external_storage"] = True
+        write_settings(path, settings)
+        self.assertTrue(read_settings(path)["show_external_storage"])
+
     def test_virtualbox_shared_folder_keeps_mount_permissions(self) -> None:
         target = self.root / "windows-share" / "backups"
         with patch(
