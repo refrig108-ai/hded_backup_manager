@@ -19,6 +19,7 @@ TIMESTAMP_RE = re.compile(r"^(\d{8}_\d{6})-(.+?)-(database\.sql\.gz|files\.tar|p
 APP_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 DEFAULT_SETTINGS: dict[str, Any] = {
     "version": 3,
+    "show_external_storage": False,
     "backup_mode": "scheduled",
     "one_time_completed_at": None,
     "one_time_timestamp": None,
@@ -58,6 +59,9 @@ def read_settings(path: Path) -> dict[str, Any]:
             for key in ("schedule", "retention", "storage", "apps"):
                 if isinstance(raw.get(key), dict):
                     settings[key].update(raw[key])
+            if "show_external_storage" in raw:
+                value = raw["show_external_storage"]
+                settings["show_external_storage"] = value is True or str(value).strip().lower() in {"1", "true", "yes", "on"}
             if "schedule_enabled" in raw:
                 settings["schedule_enabled"] = bool(raw["schedule_enabled"])
             if raw.get("backup_mode") in {"scheduled", "one_time"}:
