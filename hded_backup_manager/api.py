@@ -933,12 +933,16 @@ def start_restore(timestamp: str, storage: str = "active"):
     if system_status.get("service_active"):
         frappe.throw(_("توجد عملية نسخ احتياطي قيد التنفيذ. انتظر حتى تنتهي قبل الاستعادة."))
 
-    app_package = Path(frappe.get_app_path("hded_backup_manager")).resolve(strict=True)
-    app_root = app_package.parent
+    # Use Frappe source-path helper instead of assuming a package/repository layout.
+    app_root = Path(frappe.get_app_source_path("hded_backup_manager")).resolve(strict=True)
     runner = app_root / "scripts" / "restore_runner.py"
-    python = _bench_dir() / "env" / "bin" / "python"
+    # sys.executable is the interpreter currently running this Frappe site,
+    # so it remains correct if the bench environment is not at <bench>/env.
+    python = Path(sys.executable)
     if not runner.is_file() or not python.is_file():
-        frappe.throw(_("ملف تشغيل الاستعادة أو بيئة Python غير موجودة"))
+        details = f"restore_runner={runner} (exists={runner.is_file()}), python={python} (exists={python.is_file()})"
+        frappe.log_error(title="HDED Restore Runner Path", message=details)
+        frappe.throw(_("ملف تشغيل الاستعادة أو مفسّر Python غير موجود: {0}").format(details))
 
     log_path = Path(frappe.get_site_path("private", "hded_backup_restore.log"))
     status_payload = {
@@ -1121,11 +1125,13 @@ def start_restore_from_drive(file_id: str):
     if _system_status().get("service_active"):
         frappe.throw(_("توجد عملية نسخ احتياطي قيد التنفيذ. انتظر حتى تنتهي قبل الاستعادة."))
 
-    app_package = Path(frappe.get_app_path("hded_backup_manager")).resolve(strict=True)
-    runner = app_package.parent / "scripts" / "restore_runner.py"
-    python = _bench_dir() / "env" / "bin" / "python"
+    app_root = Path(frappe.get_app_source_path("hded_backup_manager")).resolve(strict=True)
+    runner = app_root / "scripts" / "restore_runner.py"
+    python = Path(sys.executable)
     if not runner.is_file() or not python.is_file():
-        frappe.throw(_("ملف تشغيل الاستعادة أو بيئة Python غير موجودة"))
+        details = f"restore_runner={runner} (exists={runner.is_file()}), python={python} (exists={python.is_file()})"
+        frappe.log_error(title="HDED Drive Restore Runner Path", message=details)
+        frappe.throw(_("ملف تشغيل الاستعادة أو مفسّر Python غير موجود: {0}").format(details))
 
     log_path = Path(frappe.get_site_path("private", "hded_backup_restore.log"))
     status_payload = {
