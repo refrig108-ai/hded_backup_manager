@@ -30,5 +30,8 @@ jobs:
       - name: Test local storage validation
         run: python -m unittest discover -s tests -v
 
+      - name: Check shell script syntax
+        run: bash -n scripts/install_systemd.sh scripts/hded-backup-control scripts/backup_runner.py 2>/dev/null || bash -n scripts/install_systemd.sh scripts/hded-backup-control
+
       - name: Check JavaScript syntax
         run: node --check hded_backup_manager/hded_backup_manager/page/backup_manager/backup_manager.js
